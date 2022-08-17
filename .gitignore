@@ -22,3 +22,4 @@
 *.out
 *.log
 *.vscode
+*.code-workspace
