@@ -69,7 +69,6 @@ typedef enum {
 } lcd1602_cursor_blink_state_e;
 
 typedef struct {
-    lcd1602_type_shift_e            type_shift;
     lcd1602_num_line_e              num_line;
     lcd1602_font_size_e             font_size;
     lcd1602_type_move_cursor_e      type_move_cursor;
@@ -90,6 +89,10 @@ uint8_t lcd1602_init(lcd1602_settings_t *settings);
 uint8_t lcd1602_printf(const char *line1, const char *line2, ...);
 uint8_t lcd1602_ddram_address_set(const uint8_t address);
 uint8_t lcd1602_cgram_address_set(const uint8_t address);
+
+uint8_t lcd1602_function_set(const lcd1602_type_interface_e interface,
+                            const lcd1602_num_line_e num_line,
+                            const lcd1602_font_size_e font_size);
 
 uint8_t lcd1602_cursor_disp_shift(const lcd1602_type_shift_e shift);
 

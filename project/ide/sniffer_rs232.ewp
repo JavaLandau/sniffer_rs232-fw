@@ -2141,6 +2141,9 @@
         <file>
             <name>$PROJ_DIR$\..\bsp\bsp_lcd1602.c</name>
         </file>
+        <file>
+            <name>$PROJ_DIR$\..\bsp\bsp_led_rgb.c</name>
+        </file>
     </group>
     <group>
         <name>drivers</name>

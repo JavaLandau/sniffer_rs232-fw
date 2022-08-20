@@ -31,7 +31,7 @@
 
 #define TIME_FOR_DELAY                  5
 
-#define WAIT_TMT                        1000
+#define WAIT_TMT                        500
 
 #define TYPE_SHIFT_IS_VALID(X)          (((uint8_t)(X)) < LCD1602_SHIFT_MAX)
 #define NUM_LINE_IS_VALID(X)            (((uint8_t)(X)) < LCD1602_NUM_LINE_MAX)
@@ -54,8 +54,10 @@ static lcd1602_settings_t settings;
 
 static void __lc1602_delay_us(uint32_t delay_us)
 {
-    uint32_t clock_delay = delay_us * (HAL_RCC_GetSysClockFreq() / 1000000);
-    for (; clock_delay; __NOP(), clock_delay--);
+    __IO uint32_t clock_delay = delay_us * (HAL_RCC_GetSysClockFreq() / 8 / 1000000);
+    do {
+        __NOP();
+    } while (--clock_delay);
 }
 
 static uint8_t __lcd1602_read_write(uint8_t *data, uint8_t type_reg, uint8_t type_mode)
@@ -103,7 +105,7 @@ static uint8_t __lcd1602_read_write(uint8_t *data, uint8_t type_reg, uint8_t typ
     if (type_mode == LCD1602_WRITE_MODE) {
         GPIO_InitStruct.Pin = LCD1602_DATA_PINS;
         GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-        GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+        GPIO_InitStruct.Pull = GPIO_PULLUP;
         GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_MEDIUM;
 
         HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
@@ -192,17 +194,16 @@ static uint8_t __lcd1602_wait(const uint32_t timeout)
             break;
         }
 
-        __lc1602_delay_us(TIME_FOR_DELAY * 1000);//HAL_Delay(TIME_FOR_DELAY);
+        __lc1602_delay_us(TIME_FOR_DELAY * 1000);
         time_counter = (time_counter > TIME_FOR_DELAY) ? (time_counter - TIME_FOR_DELAY) : 0;
     }
 
     return res;
 }
 
-uint8_t __lcd1602_function_set(const lcd1602_type_interface_e interface,
+uint8_t lcd1602_function_set(const lcd1602_type_interface_e interface,
                             const lcd1602_num_line_e num_line,
-                            const lcd1602_font_size_e font_size,
-                            bool wait_bf)
+                            const lcd1602_font_size_e font_size)
 {
     if (!NUM_LINE_IS_VALID(num_line) || 
         !FONT_SIZE_IS_VALID(font_size) || 
@@ -210,12 +211,12 @@ uint8_t __lcd1602_function_set(const lcd1602_type_interface_e interface,
         return RES_INVALID_PAR;
     }
 
-    uint8_t write_data = ((uint8_t)interface << 4)|((uint8_t)num_line << 3)|
+    uint8_t write_data = ((uint8_t)interface << 4) | ((uint8_t)num_line << 3) |
                         ((uint8_t)font_size << 2) | 0x20;
 
     uint8_t res = __lcd1602_instruction_write(write_data);
 
-    if (res == RES_OK && wait_bf) {
+    if (res == RES_OK) {
         res = __lcd1602_wait(WAIT_TMT);
 
         if (res == RES_OK) {
@@ -240,7 +241,6 @@ uint8_t lcd1602_init(lcd1602_settings_t *init_settings)
         !DISP_STATE_IS_VALID(init_settings->disp_state) || 
         !CURSOR_STATE_IS_VALID(init_settings->cursor_state) || 
         !CURSOR_BLINK_STATE_IS_VALID(init_settings->cursor_blink_state) ||
-        !TYPE_SHIFT_IS_VALID(init_settings->type_shift) ||
         !NUM_LINE_IS_VALID(init_settings->num_line) || 
         !FONT_SIZE_IS_VALID(init_settings->font_size) || 
         !TYPE_INTERFACE_IS_VALID(init_settings->type_interface)) {
@@ -284,37 +284,20 @@ uint8_t lcd1602_init(lcd1602_settings_t *init_settings)
     /* Set data pins */
     GPIO_InitStruct.Pin = LCD1602_DATA_PINS;
     GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-    GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+    GPIO_InitStruct.Pull = GPIO_PULLUP;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_MEDIUM;
     HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-    __lc1602_delay_us(15000);
-
-    /* Initial sequence */
-    __lcd1602_function_set(init_settings->type_interface,
-                        init_settings->num_line,
-                        init_settings->font_size, false);
-
-    __lc1602_delay_us(5000);
-
-    __lcd1602_function_set(init_settings->type_interface,
-                        init_settings->num_line,
-                        init_settings->font_size, false);
-
-    __lc1602_delay_us(200);
-
-    __lcd1602_function_set(init_settings->type_interface,
-                        init_settings->num_line,
-                        init_settings->font_size, false);
-
-    uint8_t res = __lcd1602_function_set(init_settings->type_interface,
-                                        init_settings->num_line,
-                                        init_settings->font_size, true);
+    /* Check connection with display */
+    uint8_t res = __lcd1602_wait(WAIT_TMT);
 
     if (res != RES_OK)
         return res;
 
-    res = lcd1602_display_on_off(LCD1602_DISPLAY_OFF, LCD1602_CURSOR_OFF, LCD1602_CURSOR_BLINK_OFF);
+    /* Make configuration */
+    res = lcd1602_function_set(init_settings->type_interface,
+                                init_settings->num_line,
+                                init_settings->font_size);
 
     if (res != RES_OK)
         return res;
@@ -335,8 +318,6 @@ uint8_t lcd1602_init(lcd1602_settings_t *init_settings)
 
     if (res != RES_OK)
         return res;
-
-    //res = lcd1602_cursor_disp_shift(init_settings->type_shift);
 
     return res;
 }
@@ -418,12 +399,8 @@ uint8_t lcd1602_cursor_disp_shift(const lcd1602_type_shift_e shift)
 
     uint8_t res = __lcd1602_instruction_write(write_data);
 
-    if (res == RES_OK) {
+    if (res == RES_OK)
         res = __lcd1602_wait(WAIT_TMT);
-
-        if (res == RES_OK)
-            settings.type_shift = shift;
-    }
 
     return res;
 }
