@@ -2130,6 +2130,9 @@
             <name>$PROJ_DIR$\..\application\main.c</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\application\sniffer_rs232.c</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\application\stm32f4xx_it.c</name>
         </file>
     </group>
@@ -2143,6 +2146,12 @@
         </file>
         <file>
             <name>$PROJ_DIR$\..\bsp\bsp_led_rgb.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\bsp\bsp_rcc.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\bsp\bsp_uart.c</name>
         </file>
     </group>
     <group>
@@ -2169,6 +2178,9 @@
             </file>
             <file>
                 <name>$PROJ_DIR$\..\drivers\stm32f4xx_hal_driver\Src\stm32f4xx_hal_dma_ex.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\drivers\stm32f4xx_hal_driver\Src\stm32f4xx_hal_exti.c</name>
             </file>
             <file>
                 <name>$PROJ_DIR$\..\drivers\stm32f4xx_hal_driver\Src\stm32f4xx_hal_flash.c</name>

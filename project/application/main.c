@@ -1,45 +1,11 @@
-#include "types.h"
+#include "common.h"
 #include "stm32f4xx_hal.h"
+#include "bsp_rcc.h"
 #include "bsp_lcd1602.h"
+#include "bsp_uart.h"
 #include "bsp_led_rgb.h"
-
-static uint8_t system_clock_config(void)
-{
-    RCC_OscInitTypeDef RCC_OscInitStruct = {0};
-    RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
-
-    /* Configure the main internal regulator output voltage */
-    __HAL_RCC_PWR_CLK_ENABLE();
-    __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
-    /* Initializes the RCC Oscillators according to the specified parameters in the RCC_OscInitTypeDef structure. */
-    RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
-    RCC_OscInitStruct.HSEState = RCC_HSE_ON;
-    RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-    RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-    RCC_OscInitStruct.PLL.PLLM = 15;
-    RCC_OscInitStruct.PLL.PLLN = 216;
-    RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
-    RCC_OscInitStruct.PLL.PLLQ = 2;
-    RCC_OscInitStruct.PLL.PLLR = 2;
-    if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
-        return RES_NOK;
-
-    /* Activate the Over-Drive mode */
-    if (HAL_PWREx_EnableOverDrive() != HAL_OK)
-        return RES_NOK;
-
-    /* Initializes the CPU, AHB and APB buses clocks */
-    RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK |RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
-    RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
-    RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-    RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
-    RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
-
-    if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_5) != HAL_OK)
-        return RES_NOK;
-
-    return RES_OK;
-}
+#include "sniffer_rs232.h"
+#include <stdbool.h>
 
 void test_hardfault(void)
 {
@@ -54,11 +20,25 @@ void test_hardfault(void)
 
 static uint8_t __r = 0, __g = 0, __b = 0;
 
+static void __delay_us(uint32_t delay_us)
+{
+    __IO uint32_t clock_delay = delay_us * (HAL_RCC_GetSysClockFreq() / 8 / 1000000);
+    do {
+        __NOP();
+    } while (--clock_delay);
+}
+
+static void overflow_cb(enum uart_type type, void *params)
+{
+    static bool overflow = false;
+    overflow = true;
+}
+
 int main()
 {
     HAL_Init();
 
-    if (system_clock_config() != RES_OK)
+    if (rcc_main_config_init() != RES_OK)
         HAL_NVIC_SystemReset();
 
     uint8_t res = led_rgb_init();
@@ -70,11 +50,11 @@ int main()
     //led_rgb_calibrate(1.0f, 0.353f, 0.0784);
     led_rgb_calibrate(1.0f, 0.29412f, 0.047059f);
 
-    /*if( !(DWT->CTRL & 1) )
+    if( !(DWT->CTRL & 1) )
     {
         CoreDebug->DEMCR |= 0x01000000;
         DWT->CTRL |= 1; // enable the counter
-    }*/
+    }
 
     //uint32_t t1 = DWT->CYCCNT;
     //HAL_Delay(1);
@@ -106,7 +86,7 @@ int main()
     //res = led_rgb_set(127, 127, 127);
     //res = led_rgb_set(10, 10, 10);
 
-    uint8_t prev_r = 0, prev_g = 0, prev_b = 0;
+    /*uint8_t prev_r = 0, prev_g = 0, prev_b = 0;
 
     while(1) {
         if(prev_r != __r || prev_g != __g || prev_b != __b) {
@@ -117,6 +97,34 @@ int main()
 			led_rgb_set(__r, __g, __b);
         }
         HAL_Delay(100);
+    }*/
+
+    //sniffer_rs232_init();
+
+    struct uart_init_ctx uart_init;
+    uart_init.baudrate = 115200;
+    uart_init.wordlen = BSP_UART_WORDLEN_8;
+    uart_init.parity = BSP_UART_PARITY_NONE;
+    uart_init.stopbits = BSP_UART_STOPBITS_1;
+    uart_init.rx_size = 128;
+    uart_init.tx_size = 128;
+    uart_init.params = NULL;
+    uart_init.error_isr_cb = NULL;
+    uart_init.overflow_isr_cb = overflow_cb;
+
+    res = bsp_uart_init(BSP_UART_TYPE_CLI, &uart_init);
+    uint8_t rx_buff[128] = {0};
+
+    uint16_t len = 0;
+    uint32_t total_rcv = 0;
+
+    if (res == RES_OK) {
+        while(true) {
+            if (bsp_uart_read(BSP_UART_TYPE_CLI, rx_buff, &len, 1000) == RES_OK) {
+                //total_rcv += len;
+                bsp_uart_write(BSP_UART_TYPE_CLI, rx_buff, len, 1000);
+            }
+        }
     }
 
     return 0;

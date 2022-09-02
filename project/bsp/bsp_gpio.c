@@ -1,4 +1,4 @@
-#include "types.h"
+#include "common.h"
 #include "bsp_gpio.h"
 
 uint8_t gpio_bulk_read(GPIO_TypeDef* gpiox, uint16_t *gpio_pins, uint16_t *gpio_states)

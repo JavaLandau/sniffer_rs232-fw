@@ -1,6 +1,6 @@
-#include "types.h"
+#include "common.h"
 #include "bsp_led_rgb.h"
-#include "stm32f4xx_ll_rcc.h"
+#include "bsp_rcc.h"
 
 #define LED_RGB_PERIOD          1000
 #define TIM_PERIOD              UINT16_MAX
@@ -11,23 +11,9 @@ static uint32_t led_rgb_tim_channels[] = {TIM_CHANNEL_1, TIM_CHANNEL_2, TIM_CHAN
 
 static float coef_r = 1.0f, coef_g = 1.0f, coef_b = 1.0f;
 
-static uint32_t __led_rgb_tim_clk_get(void)
-{
-    uint32_t timclk_prescaler = LL_RCC_GetTIMPrescaler() >> RCC_DCKCFGR_TIMPRE_Pos;
-    uint32_t hclk_freq = HAL_RCC_GetHCLKFreq();
-    uint32_t pclk_freq = HAL_RCC_GetPCLK2Freq();
-
-    uint32_t tim_freq = 0;
-
-    tim_freq = pclk_freq * (2UL << timclk_prescaler);
-    tim_freq = (tim_freq > hclk_freq) ? hclk_freq : tim_freq;
-
-    return tim_freq;
-}
-
 static void __led_rgb_tim_pwm_msp_init(TIM_HandleTypeDef* htim)
 {
-    if (htim->Instance !=TIM1)
+    if (htim->Instance != TIM1)
         return;
 
     __HAL_RCC_TIM1_CLK_ENABLE();
@@ -35,7 +21,7 @@ static void __led_rgb_tim_pwm_msp_init(TIM_HandleTypeDef* htim)
 
 static void __led_rgb_tim_pwm_msp_deinit(TIM_HandleTypeDef* htim)
 {
-    if (htim->Instance !=TIM1)
+    if (htim->Instance != TIM1)
         return;
 
     __HAL_RCC_TIM1_CLK_DISABLE();
@@ -72,7 +58,7 @@ uint8_t led_rgb_init(void)
         HAL_TIM_RegisterCallback(&htim1, HAL_TIM_PWM_MSPDEINIT_CB_ID, __led_rgb_tim_pwm_msp_deinit);
 
         htim1.Init.Period = TIM_PERIOD;
-        htim1.Init.Prescaler = (uint32_t)((float)__led_rgb_tim_clk_get() / (float)(htim1.Init.Period * LED_RGB_PERIOD) + 0.5f);
+        htim1.Init.Prescaler = (uint32_t)((float)rcc_apb_timer_freq_get(htim1.Instance) / (float)(htim1.Init.Period * LED_RGB_PERIOD) + 0.5f) - 1;
         htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
         htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
         htim1.Init.RepetitionCounter = 0;

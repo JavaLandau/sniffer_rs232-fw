@@ -4,7 +4,7 @@
 
 #include "bsp_lcd1602.h"
 #include "bsp_gpio.h"
-#include "types.h"
+#include "common.h"
 #include "stm32f4xx_hal.h"
 #include <stdbool.h>
 
