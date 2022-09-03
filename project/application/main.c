@@ -12,7 +12,7 @@ void test_hardfault(void)
     uint8_t value = 0;
 
     while(1) {
-        led_rgb_set(255 * value, 0, 0);
+        bsp_led_rgb_set(255 * value, 0, 0);
         value = 1 - value;
         HAL_Delay(1000);
     }
@@ -38,17 +38,15 @@ int main()
 {
     HAL_Init();
 
-    if (rcc_main_config_init() != RES_OK)
+    if (bsp_rcc_main_config_init() != RES_OK)
         HAL_NVIC_SystemReset();
 
-    uint8_t res = led_rgb_init();
+    uint8_t res = bsp_led_rgb_init();
 
     if (res != RES_OK)
         HAL_NVIC_SystemReset();
 
-    //led_rgb_calibrate(1.0f, 0.247f, 0.0784);
-    //led_rgb_calibrate(1.0f, 0.353f, 0.0784);
-    led_rgb_calibrate(1.0f, 0.29412f, 0.047059f);
+    bsp_led_rgb_calibrate(255, 75, 12);
 
     if( !(DWT->CTRL & 1) )
     {
@@ -117,11 +115,12 @@ int main()
 
     uint16_t len = 0;
     uint32_t total_rcv = 0;
+    static bool stop_rcv = false;
 
     if (res == RES_OK) {
         while(true) {
-            if (bsp_uart_read(BSP_UART_TYPE_CLI, rx_buff, &len, 1000) == RES_OK) {
-                //total_rcv += len;
+            if (!stop_rcv && bsp_uart_read(BSP_UART_TYPE_CLI, rx_buff, &len, 1000) == RES_OK) {
+                total_rcv += len;
                 bsp_uart_write(BSP_UART_TYPE_CLI, rx_buff, len, 1000);
             }
         }

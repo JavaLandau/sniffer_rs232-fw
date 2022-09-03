@@ -79,31 +79,25 @@ typedef struct {
     lcd1602_cursor_blink_state_e    cursor_blink_state;
 } lcd1602_settings_t;
 
-typedef enum {
-    LCD1602_NO_CODES = 0,
-    LCD1602_NO_CONNECTION,
-    LCD1602_INTERFACE_ERROR,
-} lcd1602_ext_code;
+uint8_t bsp_lcd1602_init(lcd1602_settings_t *settings);
+uint8_t bsp_lcd1602_printf(const char *line1, const char *line2, ...);
+uint8_t bsp_lcd1602_ddram_address_set(const uint8_t address);
+uint8_t bsp_lcd1602_cgram_address_set(const uint8_t address);
 
-uint8_t lcd1602_init(lcd1602_settings_t *settings);
-uint8_t lcd1602_printf(const char *line1, const char *line2, ...);
-uint8_t lcd1602_ddram_address_set(const uint8_t address);
-uint8_t lcd1602_cgram_address_set(const uint8_t address);
+uint8_t bsp_lcd1602_function_set(const lcd1602_type_interface_e interface,
+                                 const lcd1602_num_line_e num_line,
+                                 const lcd1602_font_size_e font_size);
 
-uint8_t lcd1602_function_set(const lcd1602_type_interface_e interface,
-                            const lcd1602_num_line_e num_line,
-                            const lcd1602_font_size_e font_size);
+uint8_t bsp_lcd1602_cursor_disp_shift(const lcd1602_type_shift_e shift);
 
-uint8_t lcd1602_cursor_disp_shift(const lcd1602_type_shift_e shift);
+uint8_t bsp_lcd1602_display_on_off(const lcd1602_disp_state_e disp_state,
+                                   const lcd1602_cursor_state_e cursor_state, 
+                                   const lcd1602_cursor_blink_state_e cursor_blink_state);
 
-uint8_t lcd1602_display_on_off(const lcd1602_disp_state_e disp_state,
-                                const lcd1602_cursor_state_e cursor_state, 
-                                const lcd1602_cursor_blink_state_e cursor_blink_state);
+uint8_t bsp_lcd1602_entry_mode_set(const lcd1602_type_move_cursor_e cursor,
+                                   const lcd1602_shift_entire_disp_e shift_entire);
 
-uint8_t lcd1602_entry_mode_set(const lcd1602_type_move_cursor_e cursor,
-                                const lcd1602_shift_entire_disp_e shift_entire);
-
-uint8_t lcd1602_return_home(void);
-uint8_t lcd1602_display_clear(void);
+uint8_t bsp_lcd1602_return_home(void);
+uint8_t bsp_lcd1602_display_clear(void);
 
 #endif //__BSP_LCD1602_H__

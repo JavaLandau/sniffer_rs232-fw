@@ -2,7 +2,7 @@
 #include "bsp_rcc.h"
 #include "stm32f4xx_ll_rcc.h"
 
-uint8_t rcc_main_config_init(void)
+uint8_t bsp_rcc_main_config_init(void)
 {
     RCC_OscInitTypeDef RCC_OscInitStruct = {0};
     RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
@@ -40,7 +40,7 @@ uint8_t rcc_main_config_init(void)
     return RES_OK;
 }
 
-uint32_t rcc_apb_timer_freq_get(TIM_TypeDef *instance)
+uint32_t bsp_rcc_apb_timer_freq_get(TIM_TypeDef *instance)
 {
     if (!IS_TIM_INSTANCE(instance))
         return 0;

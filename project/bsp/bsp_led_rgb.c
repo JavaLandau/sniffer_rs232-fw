@@ -9,7 +9,7 @@ static TIM_HandleTypeDef htim1 = {.Instance = TIM1};
 
 static uint32_t led_rgb_tim_channels[] = {TIM_CHANNEL_1, TIM_CHANNEL_2, TIM_CHANNEL_3};
 
-static float coef_r = 1.0f, coef_g = 1.0f, coef_b = 1.0f;
+static uint8_t coef_r = 255, coef_g = 255, coef_b = 255;
 
 static void __led_rgb_tim_pwm_msp_init(TIM_HandleTypeDef* htim)
 {
@@ -47,7 +47,7 @@ static void __led_rgb_tim_msp_prev_deinit(void)
     HAL_GPIO_DeInit(GPIOA, GPIO_PIN_8 | GPIO_PIN_9 | GPIO_PIN_10);
 }
 
-uint8_t led_rgb_init(void)
+uint8_t bsp_led_rgb_init(void)
 {
     uint8_t res = RES_OK;
     TIM_ClockConfigTypeDef clock_source_config = {0};
@@ -58,7 +58,7 @@ uint8_t led_rgb_init(void)
         HAL_TIM_RegisterCallback(&htim1, HAL_TIM_PWM_MSPDEINIT_CB_ID, __led_rgb_tim_pwm_msp_deinit);
 
         htim1.Init.Period = TIM_PERIOD;
-        htim1.Init.Prescaler = (uint32_t)((float)rcc_apb_timer_freq_get(htim1.Instance) / (float)(htim1.Init.Period * LED_RGB_PERIOD) + 0.5f) - 1;
+        htim1.Init.Prescaler = (uint32_t)((float)bsp_rcc_apb_timer_freq_get(htim1.Instance) / (float)(htim1.Init.Period * LED_RGB_PERIOD) + 0.5f) - 1;
         htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
         htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
         htim1.Init.RepetitionCounter = 0;
@@ -82,7 +82,7 @@ uint8_t led_rgb_init(void)
     return res;
 }
 
-uint8_t led_rgb_deinit(void)
+uint8_t bsp_led_rgb_deinit(void)
 {
     uint8_t res = RES_OK;
     for (uint8_t i = 0; i < 3; i++) {
@@ -103,11 +103,8 @@ uint8_t led_rgb_deinit(void)
     return RES_OK;
 }
 
-uint8_t led_rgb_calibrate(float _coef_r, float _coef_g, float _coef_b)
+uint8_t bsp_led_rgb_calibrate(uint8_t _coef_r, uint8_t _coef_g, uint8_t _coef_b)
 {
-    if (_coef_r > 1.0f || _coef_g > 1.0f || _coef_b > 1.0f)
-        return RES_INVALID_PAR;
-
     coef_r = _coef_r;
     coef_g = _coef_g;
     coef_b = _coef_b;
@@ -115,10 +112,10 @@ uint8_t led_rgb_calibrate(float _coef_r, float _coef_g, float _coef_b)
     return RES_OK;
 }
 
-uint8_t led_rgb_set(uint8_t r, uint8_t g, uint8_t b)
+uint8_t bsp_led_rgb_set(uint8_t r, uint8_t g, uint8_t b)
 {
     uint8_t res = RES_OK;
-    float pulse_width[] = {b * coef_b, r * coef_r, g * coef_g};
+    float pulse_width[] = {b * (float)coef_b / 255.0f, r * (float)coef_r / 255.0f, g * (float)coef_g / 255.0f};
 
     TIM_OC_InitTypeDef config_OC = {0};
     config_OC.OCMode = TIM_OCMODE_PWM1;

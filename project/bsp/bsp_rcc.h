@@ -14,7 +14,7 @@
             ((INSTANCE) == TIM11)) ? 2 : 1) : 0)
 #endif
 
-uint8_t rcc_main_config_init(void);
-uint32_t rcc_apb_timer_freq_get(TIM_TypeDef *instance);
+uint8_t bsp_rcc_main_config_init(void);
+uint32_t bsp_rcc_apb_timer_freq_get(TIM_TypeDef *instance);
 
 #endif //__BSP_RCC_H__

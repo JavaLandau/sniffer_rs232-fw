@@ -365,7 +365,10 @@ void __uart_rx_callback(UART_HandleTypeDef *huart, uint16_t pos)
         if (uart_obj[type].ctx && uart_obj[type].ctx->rx_buff) {
             uint16_t idx_set = uart_obj[type].ctx->rx_idx_set;
             uint16_t idx_get = uart_obj[type].ctx->rx_idx_get;
+            uint32_t rx_size = uart_obj[type].ctx->init.rx_size;
             bool overflow = false;
+
+            pos = (pos == rx_size) ? 0 : pos;
 
             if (idx_set == pos)
                 return;

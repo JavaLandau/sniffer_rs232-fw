@@ -119,7 +119,7 @@ static uint8_t __sniffer_rs232_line_baudrate_calc_init(GPIO_TypeDef* gpiox, uint
             break;
         }
 
-        if (GPIO_PORT_READ(gpiox, port)) {
+        if (BSP_GPIO_PORT_READ(gpiox, port)) {
             HAL_NVIC_ClearPendingIRQ(irq_type);
             HAL_NVIC_EnableIRQ(irq_type);
             break;
@@ -430,7 +430,7 @@ uint8_t sniffer_rs232_init(void)
     HAL_TIM_RegisterCallback(&htim6, HAL_TIM_BASE_MSPINIT_CB_ID, __sniffer_rs232_tim_msp_init);
     HAL_TIM_RegisterCallback(&htim6, HAL_TIM_BASE_MSPDEINIT_CB_ID, __sniffer_rs232_tim_msp_deinit);
 
-    htim6.Init.Prescaler = rcc_apb_timer_freq_get(htim6.Instance) / TIM_FREQ - 1;
+    htim6.Init.Prescaler = bsp_rcc_apb_timer_freq_get(htim6.Instance) / TIM_FREQ - 1;
     htim6.Init.Period = UINT16_MAX;
     htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
     htim6.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;

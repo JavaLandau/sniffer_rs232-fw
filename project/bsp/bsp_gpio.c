@@ -1,7 +1,7 @@
 #include "common.h"
 #include "bsp_gpio.h"
 
-uint8_t gpio_bulk_read(GPIO_TypeDef* gpiox, uint16_t *gpio_pins, uint16_t *gpio_states)
+uint8_t bsp_gpio_bulk_read(GPIO_TypeDef* gpiox, uint16_t *gpio_pins, uint16_t *gpio_states)
 {
     if (!gpiox || !gpio_states || !gpio_pins)
         return RES_INVALID_PAR;
@@ -18,7 +18,7 @@ uint8_t gpio_bulk_read(GPIO_TypeDef* gpiox, uint16_t *gpio_pins, uint16_t *gpio_
     return RES_OK;
 }
 
-uint8_t gpio_bulk_write(GPIO_TypeDef* gpiox, uint16_t *gpio_pins, uint16_t gpio_states)
+uint8_t bsp_gpio_bulk_write(GPIO_TypeDef* gpiox, uint16_t *gpio_pins, uint16_t gpio_states)
 {
     if (!gpiox || !gpio_pins)
         return RES_INVALID_PAR;

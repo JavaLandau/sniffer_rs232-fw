@@ -29,7 +29,7 @@
 #define LCD1602_DATA_CLEAR_DISPLAY      0x1
 #define LCD1602_DATA_RETURN_HOME        0x2
 
-#define TIME_FOR_DELAY                  5
+#define TIME_FOR_DELAY                  1
 
 #define WAIT_TMT                        500
 
@@ -49,7 +49,6 @@ static uint16_t lcd1602_data_pins[] = {GPIO_PIN_15, GPIO_PIN_14, GPIO_PIN_13, GP
 #define LCD1602_DATA_PINS               (lcd1602_data_pins[0] | lcd1602_data_pins[1] | lcd1602_data_pins[2] | lcd1602_data_pins[3] | \
                                         lcd1602_data_pins[4] | lcd1602_data_pins[5] | lcd1602_data_pins[6] | lcd1602_data_pins[7])
 
-static lcd1602_ext_code ext_code = LCD1602_NO_CODES;
 static lcd1602_settings_t settings;
 
 static void __lc1602_delay_us(uint32_t delay_us)
@@ -84,7 +83,7 @@ static uint8_t __lcd1602_read_write(uint8_t *data, uint8_t type_reg, uint8_t typ
         GPIO_InitStruct.Pull = GPIO_NOPULL;
         GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_MEDIUM;
 
-        gpio_bulk_write(GPIOC, lcd1602_data_pins, data_u16);
+        bsp_gpio_bulk_write(GPIOC, lcd1602_data_pins, data_u16);
         HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
     }
 
@@ -93,7 +92,7 @@ static uint8_t __lcd1602_read_write(uint8_t *data, uint8_t type_reg, uint8_t typ
     __lc1602_delay_us(1);
 
     if (type_mode == LCD1602_READ_MODE) {
-        gpio_bulk_read(GPIOC, lcd1602_data_pins, &data_u16);
+        bsp_gpio_bulk_read(GPIOC, lcd1602_data_pins, &data_u16);
         *data = (uint8_t)data_u16;
     }
 
@@ -116,27 +115,16 @@ static uint8_t __lcd1602_read_write(uint8_t *data, uint8_t type_reg, uint8_t typ
 
 static uint8_t __lcd1602_instruction_write(uint8_t instruction)
 {
-    ext_code = LCD1602_NO_CODES;
-
-    uint8_t res = __lcd1602_read_write(&instruction, LCD1602_INSTR_REG, LCD1602_WRITE_MODE);
-
-    if (res != RES_OK)
-        ext_code = LCD1602_INTERFACE_ERROR;
-
-    return res;
+    return __lcd1602_read_write(&instruction, LCD1602_INSTR_REG, LCD1602_WRITE_MODE);
 }
 
 static uint8_t __lcd1602_read_busy_flag(uint8_t *busy_flag, uint8_t *address_counter)
 {
-    ext_code = LCD1602_NO_CODES;
-
     uint8_t read_data = 0;
     uint8_t res = __lcd1602_read_write(&read_data, LCD1602_INSTR_REG, LCD1602_READ_MODE);
 
-    if (res != RES_OK) {
-        ext_code = LCD1602_INTERFACE_ERROR;
+    if (res != RES_OK)
         return res;
-    }
 
     if (busy_flag)
         *busy_flag = (read_data >> 7) & 0x1;
@@ -149,14 +137,7 @@ static uint8_t __lcd1602_read_busy_flag(uint8_t *busy_flag, uint8_t *address_cou
 
 static uint8_t __lcd1602_data_write(uint8_t data)
 {
-    ext_code = LCD1602_NO_CODES;
-
-    uint8_t res = __lcd1602_read_write(&data, LCD1602_DATA_REG, LCD1602_WRITE_MODE);
-
-    if (res != RES_OK)
-        ext_code = LCD1602_INTERFACE_ERROR;
-
-    return res;
+    return __lcd1602_read_write(&data, LCD1602_DATA_REG, LCD1602_WRITE_MODE);
 }
 
 static uint8_t __lcd1602_data_read(uint8_t *data)
@@ -164,14 +145,7 @@ static uint8_t __lcd1602_data_read(uint8_t *data)
     if (!data)
         return RES_INVALID_PAR;
 
-    ext_code = LCD1602_NO_CODES;
-
-    uint8_t res = __lcd1602_read_write(data, LCD1602_DATA_REG, LCD1602_READ_MODE);
-
-    if (res != RES_OK)
-        ext_code = LCD1602_INTERFACE_ERROR;
-
-    return res;
+    return __lcd1602_read_write(data, LCD1602_DATA_REG, LCD1602_READ_MODE);
 }
 
 static uint8_t __lcd1602_wait(const uint32_t timeout)
@@ -194,16 +168,16 @@ static uint8_t __lcd1602_wait(const uint32_t timeout)
             break;
         }
 
-        __lc1602_delay_us(TIME_FOR_DELAY * 1000);
+        HAL_Delay(TIME_FOR_DELAY);
         time_counter = (time_counter > TIME_FOR_DELAY) ? (time_counter - TIME_FOR_DELAY) : 0;
     }
 
     return res;
 }
 
-uint8_t lcd1602_function_set(const lcd1602_type_interface_e interface,
-                            const lcd1602_num_line_e num_line,
-                            const lcd1602_font_size_e font_size)
+uint8_t bsp_lcd1602_function_set(const lcd1602_type_interface_e interface,
+                                const lcd1602_num_line_e num_line,
+                                const lcd1602_font_size_e font_size)
 {
     if (!NUM_LINE_IS_VALID(num_line) || 
         !FONT_SIZE_IS_VALID(font_size) || 
@@ -229,12 +203,10 @@ uint8_t lcd1602_function_set(const lcd1602_type_interface_e interface,
     return res;
 }
 
-uint8_t lcd1602_init(lcd1602_settings_t *init_settings)
+uint8_t bsp_lcd1602_init(lcd1602_settings_t *init_settings)
 {
     if (!init_settings)
         return RES_INVALID_PAR;
-
-    ext_code = LCD1602_NO_CODES;
 
     if (!TYPE_MOVE_CURSOR_IS_VALID(init_settings->type_move_cursor) || 
         !SHIFT_ENTIRE_IS_VALID(init_settings->shift_entire_disp) ||
@@ -295,26 +267,26 @@ uint8_t lcd1602_init(lcd1602_settings_t *init_settings)
         return res;
 
     /* Make configuration */
-    res = lcd1602_function_set(init_settings->type_interface,
-                                init_settings->num_line,
-                                init_settings->font_size);
+    res = bsp_lcd1602_function_set(init_settings->type_interface,
+                                    init_settings->num_line,
+                                    init_settings->font_size);
 
     if (res != RES_OK)
         return res;
 
-    res = lcd1602_display_clear();
+    res = bsp_lcd1602_display_clear();
 
     if(res != RES_OK)
         return res;
 
-    res = lcd1602_entry_mode_set(init_settings->type_move_cursor, init_settings->shift_entire_disp);
+    res = bsp_lcd1602_entry_mode_set(init_settings->type_move_cursor, init_settings->shift_entire_disp);
 
     if (res != RES_OK)
         return res;
 
-    res = lcd1602_display_on_off(init_settings->disp_state, 
-                                init_settings->cursor_state, 
-                                init_settings->cursor_blink_state);
+    res = bsp_lcd1602_display_on_off(init_settings->disp_state, 
+                                    init_settings->cursor_state, 
+                                    init_settings->cursor_blink_state);
 
     if (res != RES_OK)
         return res;
@@ -322,7 +294,7 @@ uint8_t lcd1602_init(lcd1602_settings_t *init_settings)
     return res;
 }
 
-uint8_t lcd1602_display_clear(void)
+uint8_t bsp_lcd1602_display_clear(void)
 {
     uint8_t res = __lcd1602_instruction_write(LCD1602_DATA_CLEAR_DISPLAY);
 
@@ -332,7 +304,7 @@ uint8_t lcd1602_display_clear(void)
     return res;
 }
 
-uint8_t lcd1602_return_home(void)
+uint8_t bsp_lcd1602_return_home(void)
 {
     uint8_t res = __lcd1602_instruction_write(LCD1602_DATA_RETURN_HOME);
 
@@ -342,8 +314,8 @@ uint8_t lcd1602_return_home(void)
     return res;
 }
 
-uint8_t lcd1602_entry_mode_set( const lcd1602_type_move_cursor_e cursor,
-                                const lcd1602_shift_entire_disp_e shift_entire)
+uint8_t bsp_lcd1602_entry_mode_set( const lcd1602_type_move_cursor_e cursor,
+                                    const lcd1602_shift_entire_disp_e shift_entire)
 {
     if (!TYPE_MOVE_CURSOR_IS_VALID(cursor) || !SHIFT_ENTIRE_IS_VALID(shift_entire))
         return RES_INVALID_PAR;
@@ -363,9 +335,9 @@ uint8_t lcd1602_entry_mode_set( const lcd1602_type_move_cursor_e cursor,
     return res;
 }
 
-uint8_t lcd1602_display_on_off(const lcd1602_disp_state_e disp_state,
-                                const lcd1602_cursor_state_e cursor_state, 
-                                const lcd1602_cursor_blink_state_e cursor_blink_state)
+uint8_t bsp_lcd1602_display_on_off(const lcd1602_disp_state_e disp_state,
+                                    const lcd1602_cursor_state_e cursor_state, 
+                                    const lcd1602_cursor_blink_state_e cursor_blink_state)
 {
     if (!DISP_STATE_IS_VALID(disp_state) || 
         !CURSOR_STATE_IS_VALID(cursor_state) || 
@@ -390,7 +362,7 @@ uint8_t lcd1602_display_on_off(const lcd1602_disp_state_e disp_state,
     return res;
 }
 
-uint8_t lcd1602_cursor_disp_shift(const lcd1602_type_shift_e shift)
+uint8_t bsp_lcd1602_cursor_disp_shift(const lcd1602_type_shift_e shift)
 {
     if (!TYPE_SHIFT_IS_VALID(shift))
         return RES_INVALID_PAR;
@@ -405,7 +377,7 @@ uint8_t lcd1602_cursor_disp_shift(const lcd1602_type_shift_e shift)
     return res;
 }
 
-uint8_t lcd1602_cgram_address_set(const uint8_t address)
+uint8_t bsp_lcd1602_cgram_address_set(const uint8_t address)
 {
     if (address > MAX_CGRAM_ADDRESS)
         return RES_INVALID_PAR;
@@ -420,7 +392,7 @@ uint8_t lcd1602_cgram_address_set(const uint8_t address)
     return res;
 }
 
-uint8_t lcd1602_ddram_address_set(const uint8_t address)
+uint8_t bsp_lcd1602_ddram_address_set(const uint8_t address)
 {
     if (address > MAX_DDRAM_ADDRESS)
         return RES_INVALID_PAR;
@@ -435,7 +407,7 @@ uint8_t lcd1602_ddram_address_set(const uint8_t address)
     return res;
 }
 
-uint8_t lcd1602_printf(const char* line1, const char* line2, ...)
+uint8_t bsp_lcd1602_printf(const char* line1, const char* line2, ...)
 {
     va_list args;
 
@@ -466,13 +438,13 @@ uint8_t lcd1602_printf(const char* line1, const char* line2, ...)
 
     va_end(args);
 
-    uint8_t res = lcd1602_display_clear();
+    uint8_t res = bsp_lcd1602_display_clear();
 
     if (res != RES_OK)
         return res;
 
     if (line1) {
-        res = lcd1602_ddram_address_set(0x0);
+        res = bsp_lcd1602_ddram_address_set(0x0);
 
         if (res != RES_OK)
             return res;
@@ -484,7 +456,7 @@ uint8_t lcd1602_printf(const char* line1, const char* line2, ...)
     }
 
     if (line2) {
-        res = lcd1602_ddram_address_set(LCD1602_DDRAM_START_LINE2);
+        res = bsp_lcd1602_ddram_address_set(LCD1602_DDRAM_START_LINE2);
 
         if (res != RES_OK)
             return res;
