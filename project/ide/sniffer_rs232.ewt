@@ -2842,31 +2842,31 @@
     <group>
         <name>application</name>
         <file>
-            <name>$PROJ_DIR$\..\application\main.c</name>
+            <name>$PROJ_DIR$\..\application\src\main.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\application\sniffer_rs232.c</name>
+            <name>$PROJ_DIR$\..\application\src\sniffer_rs232.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\application\stm32f4xx_it.c</name>
+            <name>$PROJ_DIR$\..\application\src\stm32f4xx_it.c</name>
         </file>
     </group>
     <group>
         <name>bsp</name>
         <file>
-            <name>$PROJ_DIR$\..\bsp\bsp_gpio.c</name>
+            <name>$PROJ_DIR$\..\bsp\src\bsp_gpio.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\bsp\bsp_lcd1602.c</name>
+            <name>$PROJ_DIR$\..\bsp\src\bsp_lcd1602.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\bsp\bsp_led_rgb.c</name>
+            <name>$PROJ_DIR$\..\bsp\src\bsp_led_rgb.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\bsp\bsp_rcc.c</name>
+            <name>$PROJ_DIR$\..\bsp\src\bsp_rcc.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\bsp\bsp_uart.c</name>
+            <name>$PROJ_DIR$\..\bsp\src\bsp_uart.c</name>
         </file>
     </group>
     <group>
