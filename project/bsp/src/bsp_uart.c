@@ -415,20 +415,14 @@ uint8_t bsp_uart_stop(enum uart_type type)
     if (!UART_TYPE_VALID(type) || !uart_obj[type].ctx)
         return RES_INVALID_PAR;
 
-    HAL_StatusTypeDef hal_res = HAL_OK;
-
-    if (type == BSP_UART_TYPE_CLI)
-        hal_res = HAL_UART_AbortTransmit(&uart_obj[type].uart);
-
-    if (hal_res == HAL_OK)
-        hal_res = HAL_UART_AbortReceive(&uart_obj[type].uart);
+    HAL_StatusTypeDef hal_res = HAL_UART_DMAStop(&uart_obj[type].uart);
 
     return (hal_res == HAL_OK) ? RES_OK : RES_NOK;
 }
 
 uint8_t bsp_uart_write(enum uart_type type, uint8_t *data, uint16_t len, uint32_t tmt_ms)
 {
-    if (!UART_TYPE_VALID(type) || !uart_obj[type].ctx)
+    if (!UART_TYPE_VALID(type) || !uart_obj[type].ctx || !uart_obj[type].ctx->tx_buff)
         return RES_INVALID_PAR;
 
     if (!data || !len)
@@ -456,7 +450,7 @@ uint8_t bsp_uart_write(enum uart_type type, uint8_t *data, uint16_t len, uint32_
 
 uint8_t bsp_uart_read(enum uart_type type, uint8_t *data, uint16_t *len, uint32_t tmt_ms)
 {
-    if (!UART_TYPE_VALID(type))
+    if (!UART_TYPE_VALID(type) || !uart_obj[type].ctx || !uart_obj[type].ctx->rx_buff)
         return RES_INVALID_PAR;
 
     uint8_t res = RES_OK;
@@ -506,7 +500,7 @@ uint8_t bsp_uart_init(enum uart_type type, struct uart_init_ctx *init)
     if (!UART_WORDLEN_VALID(init->wordlen) || !UART_PARITY_VALID(init->parity))
         return RES_INVALID_PAR;
 
-    if (!UART_STOPBITS_VALID(init->stopbits) || !init->tx_size || !init->rx_size)
+    if (!UART_STOPBITS_VALID(init->stopbits))
         return RES_INVALID_PAR;
 
     if (!init->baudrate || init->baudrate > UART_BAUDRATE_MAX)
@@ -526,15 +520,16 @@ uint8_t bsp_uart_init(enum uart_type type, struct uart_init_ctx *init)
 
             memset(uart_obj[type].ctx, 0, sizeof(struct uart_ctx));
         } else {
-            hal_res = HAL_UART_DMAStop(&uart_obj[type].uart);
+            res = bsp_uart_stop(type);
 
-            if (hal_res != HAL_OK) {
-                res = RES_NOK;
-                break;
-            }
+            if (res != RES_OK)
+                return res;
+
+            uart_obj[type].ctx->rx_idx_get = 0;
+            uart_obj[type].ctx->rx_idx_set = 0;
         }
 
-        uint32_t rx_size = init->rx_size + 1;
+        uint32_t rx_size = init->rx_size;
         if (uart_obj[type].ctx->rx_buff && uart_obj[type].ctx->init.rx_size != rx_size) {
             free(uart_obj[type].ctx->rx_buff);
             uart_obj[type].ctx->rx_buff = NULL;
@@ -546,7 +541,7 @@ uint8_t bsp_uart_init(enum uart_type type, struct uart_init_ctx *init)
             uart_obj[type].ctx->tx_buff = NULL;
         }
 
-        if (!uart_obj[type].ctx->rx_buff) {
+        if (!uart_obj[type].ctx->rx_buff && rx_size) {
             uart_obj[type].ctx->rx_buff = (uint8_t*)malloc(rx_size);
 
             if (!uart_obj[type].ctx->rx_buff) {
@@ -556,7 +551,7 @@ uint8_t bsp_uart_init(enum uart_type type, struct uart_init_ctx *init)
             memset(uart_obj[type].ctx->rx_buff, 0, rx_size);
         }
 
-        if (!uart_obj[type].ctx->tx_buff) {
+        if (!uart_obj[type].ctx->tx_buff && tx_size) {
             uart_obj[type].ctx->tx_buff = (uint8_t*)malloc(tx_size);
 
             if (!uart_obj[type].ctx->tx_buff) {
@@ -567,7 +562,6 @@ uint8_t bsp_uart_init(enum uart_type type, struct uart_init_ctx *init)
         }
 
         uart_obj[type].ctx->init = *init;
-        uart_obj[type].ctx->init.rx_size = rx_size;
 
         if (uart_obj[type].uart.gState == HAL_UART_STATE_RESET) {
             res = __uart_msp_init(type);
@@ -598,11 +592,13 @@ uint8_t bsp_uart_init(enum uart_type type, struct uart_init_ctx *init)
             break;
         }
 
-        hal_res = HAL_UARTEx_ReceiveToIdle_DMA(&uart_obj[type].uart, uart_obj[type].ctx->rx_buff, uart_obj[type].ctx->init.rx_size);
+        if (uart_obj[type].ctx->rx_buff) {
+            hal_res = HAL_UARTEx_ReceiveToIdle_DMA(&uart_obj[type].uart, uart_obj[type].ctx->rx_buff, uart_obj[type].ctx->init.rx_size);
 
-        if (hal_res != HAL_OK) {
-            res = RES_NOK;
-            break;
+            if (hal_res != HAL_OK) {
+                res = RES_NOK;
+                break;
+            }
         }
     } while(0);
 

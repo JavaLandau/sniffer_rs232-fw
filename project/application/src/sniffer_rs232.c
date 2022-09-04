@@ -51,12 +51,12 @@ struct hyp_ctx {
 };
 
 static const struct hyp_ctx hyp_seq[] = {
-    {BSP_UART_WORDLEN_8, BSP_UART_PARITY_NONE, 1},
-    {BSP_UART_WORDLEN_8, BSP_UART_PARITY_EVEN, 4},
-    {BSP_UART_WORDLEN_8, BSP_UART_PARITY_ODD, 4},
-    {BSP_UART_WORDLEN_9, BSP_UART_PARITY_NONE, 4},
+    {BSP_UART_WORDLEN_8, BSP_UART_PARITY_EVEN, 3},
+    {BSP_UART_WORDLEN_8, BSP_UART_PARITY_ODD, 3},
+    {BSP_UART_WORDLEN_8, BSP_UART_PARITY_NONE, 3},
     {BSP_UART_WORDLEN_9, BSP_UART_PARITY_EVEN, 0},
-    {BSP_UART_WORDLEN_9, BSP_UART_PARITY_ODD, 0}
+    {BSP_UART_WORDLEN_9, BSP_UART_PARITY_ODD, 0},
+    {BSP_UART_WORDLEN_9, BSP_UART_PARITY_NONE, 0}
 };
 
 static void __sniffer_rs232_tim_msp_init(TIM_HandleTypeDef* htim)
@@ -152,8 +152,11 @@ static void __sniffer_rs232_line_baudrate_calc(struct baud_calc_ctx *ctx)
         if (!ctx->toggle_bit) {
             uint32_t len_bit = (uint16_t)(ctx->buffer[ctx->idx + 1] - ctx->buffer[ctx->idx]);
             if (len_bit < ctx->min_len_bit) {
-                if (__sniffer_rs232_baudrate_get(len_bit))
+                uint32_t baudrate = __sniffer_rs232_baudrate_get(len_bit);
+                if (baudrate) {
                     ctx->min_len_bit = len_bit;
+                    ctx->baudrate = baudrate;
+                }
             }
         }
 
@@ -353,7 +356,7 @@ uint8_t __sniffer_rs232_params_calc(enum rs232_calc_type calc_type, uint32_t bau
                     __hyp_num = hyp_seq[__hyp_num].jump;
                 else
                     __hyp_num = (__hyp_num == (ARRAY_SIZE(hyp_seq) - 1)) ? 0 : (__hyp_num + 1);
-                continue;
+                break;
             }
 
             switch (calc_type) {
@@ -384,11 +387,39 @@ uint8_t __sniffer_rs232_params_calc(enum rs232_calc_type calc_type, uint32_t bau
         if (res != RES_OK)
             break;
 
+        if (calc_type != RS232_CALC_RX) {
+            res = bsp_uart_stop(BSP_UART_TYPE_RS232_TX);
+
+            if (res != RES_OK)
+                break;
+        }
+
+        if (calc_type != RS232_CALC_TX) {
+            res = bsp_uart_stop(BSP_UART_TYPE_RS232_RX);
+
+            if (res != RES_OK)
+                break;
+        }
+
         if (finish_flag) {
             *hyp_num = __hyp_num;
             break;
         }
     } while(__hyp_num);
+
+    if (calc_type != RS232_CALC_RX) {
+        res = bsp_uart_deinit(BSP_UART_TYPE_RS232_TX);
+
+        if (res != RES_OK)
+            return res;
+    }
+
+    if (calc_type != RS232_CALC_TX) {
+        res = bsp_uart_deinit(BSP_UART_TYPE_RS232_RX);
+
+        if (res != RES_OK)
+            return res;
+    }
 
     return res;
 }
@@ -504,23 +535,14 @@ uint8_t sniffer_rs232_calc(enum rs232_calc_type calc_type, struct uart_init_ctx 
     return res;
 }
 
-static uint32_t max_dur = 0;
-
 void EXTI3_IRQHandler(void)
 {
-    uint32_t t1 = DWT->CYCCNT;
     tx_buffer[tx_cnt++] = htim6.Instance->CNT;
 
     if (tx_cnt == BUFFER_SIZE)
         HAL_NVIC_DisableIRQ(EXTI3_IRQn);
 
     __HAL_GPIO_EXTI_CLEAR_IT(GPIO_PIN_3);
-
-    uint32_t t2 = DWT->CYCCNT;
-    uint32_t dur = t2 - t1;
-
-    if (max_dur < dur)
-        max_dur = dur;
 }
 
 void EXTI9_5_IRQHandler(void)

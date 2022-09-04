@@ -97,7 +97,10 @@ int main()
         HAL_Delay(100);
     }*/
 
-    //sniffer_rs232_init();
+    sniffer_rs232_init();
+
+    struct uart_init_ctx uart_params= {0};
+    res = sniffer_rs232_calc(RS232_CALC_TX, &uart_params);
 
     struct uart_init_ctx uart_init;
     uart_init.baudrate = 115200;
