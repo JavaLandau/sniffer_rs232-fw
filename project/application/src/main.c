@@ -18,16 +18,6 @@ void test_hardfault(void)
     }
 }
 
-static uint8_t __r = 0, __g = 0, __b = 0;
-
-static void __delay_us(uint32_t delay_us)
-{
-    __IO uint32_t clock_delay = delay_us * (HAL_RCC_GetSysClockFreq() / 8 / 1000000);
-    do {
-        __NOP();
-    } while (--clock_delay);
-}
-
 static void overflow_cb(enum uart_type type, void *params)
 {
     static bool overflow = false;
@@ -77,25 +67,6 @@ int main()
     //    test_hardfault();
 
     //lcd1602_printf(" Sladkyh snov", " Yanuska");
-
-
-    //res = led_rgb_set(255, 70, 0);
-
-    //res = led_rgb_set(127, 127, 127);
-    //res = led_rgb_set(10, 10, 10);
-
-    /*uint8_t prev_r = 0, prev_g = 0, prev_b = 0;
-
-    while(1) {
-        if(prev_r != __r || prev_g != __g || prev_b != __b) {
-            prev_r = __r;
-            prev_g = __g;
-            prev_b = __b;
-            
-			led_rgb_set(__r, __g, __b);
-        }
-        HAL_Delay(100);
-    }*/
 
     sniffer_rs232_init();
 
