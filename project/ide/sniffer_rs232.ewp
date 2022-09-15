@@ -2128,7 +2128,13 @@
     <group>
         <name>application</name>
         <file>
+            <name>$PROJ_DIR$\..\application\src\cli.c</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\application\src\main.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\application\src\menu.c</name>
         </file>
         <file>
             <name>$PROJ_DIR$\..\application\src\sniffer_rs232.c</name>

@@ -431,7 +431,8 @@ uint8_t bsp_uart_write(enum uart_type type, uint8_t *data, uint16_t len, uint32_
     uint8_t res = RES_TIMEOUT;
     uint32_t start_time = HAL_GetTick();
     while((HAL_GetTick() - start_time) < tmt_ms) {
-        if (!READ_BIT(uart_obj[type].uart.Instance->CR3, USART_CR3_DMAT)) {
+        if (!READ_BIT(uart_obj[type].uart.Instance->CR3, USART_CR3_DMAT) && 
+            READ_BIT(uart_obj[type].uart.Instance->SR, USART_SR_TC)) {
             res = RES_OK;
             break;
         }
