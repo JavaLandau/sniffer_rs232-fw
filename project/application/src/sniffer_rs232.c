@@ -4,19 +4,8 @@
 #include <stdbool.h>
 #include <string.h>
 
-#define VALID_PACKETS_THR       (20)
-#define BAUD_TOLERANCE          (10)
-#define TIM_FREQ                (1000000 * BAUD_TOLERANCE)
 #define BUFFER_SIZE             (512)
-#define MIN_BAUD_CNT_THR        (48 * 4)
-#define UART_ERROR_THR          (2)
-#define MAX_EXEC_TMT            (600000)
-#define CALC_MAX_ATT            (3)
 #define UART_BUFF_SIZE          (128)
-
-#if (MIN_BAUD_CNT_THR > BUFFER_SIZE)
-#error "MIN_BAUD_CNT_THR must be less or equaled to BUFFER_SIZE"
-#endif
 
 static TIM_HandleTypeDef htim6 = {.Instance = TIM6};
 static EXTI_HandleTypeDef hexti1 = {.Line = EXTI_LINE_3};
@@ -59,6 +48,8 @@ static const struct hyp_ctx hyp_seq[] = {
     {BSP_UART_WORDLEN_9, BSP_UART_PARITY_NONE, 0}
 };
 
+static struct sniffer_rs232_config config = {0};
+
 static void __sniffer_rs232_tim_msp_init(TIM_HandleTypeDef* htim)
 {
     if (htim->Instance != TIM6)
@@ -78,12 +69,12 @@ static void __sniffer_rs232_tim_msp_deinit(TIM_HandleTypeDef* htim)
 static uint32_t __sniffer_rs232_baudrate_get(uint32_t len_bit)
 {
     const uint32_t baudrates_list[] = {921600, 460800, 230400, 115200, 57600, 38400, 19200, 9600, 4800, 2400};
-    const float tolerance = (float)BAUD_TOLERANCE / 100.0f;
+    const float tolerance = (float)config.baudrate_tolerance / 100.0f;
 
     if (!len_bit)
         return 0;
 
-    float calc_baud = (float)TIM_FREQ / (float)len_bit;
+    float calc_baud = (float)(1000000 * config.baudrate_tolerance) / (float)len_bit;
 
     uint32_t i = 0;
     for (; i < ARRAY_SIZE(baudrates_list); i++) {
@@ -163,15 +154,15 @@ static void __sniffer_rs232_line_baudrate_calc(struct baud_calc_ctx *ctx)
         ctx->toggle_bit = !ctx->toggle_bit;
     }
 
-    ctx->done = (ctx->idx >= MIN_BAUD_CNT_THR);
+    ctx->done = (ctx->idx >= (4 * config.min_detect_bits));
 }
 
-uint8_t __sniffer_rs232_baudrate_calc(enum rs232_calc_type calc_type, uint32_t *baudrate)
+uint8_t __sniffer_rs232_baudrate_calc(enum rs232_channel_type channel_type, uint32_t *baudrate)
 {
-    if (!baudrate || !RS232_CALC_TYPE_VALID(calc_type))
+    if (!baudrate || !RS232_CHANNEL_TYPE_VALID(channel_type))
         return RES_INVALID_PAR;
 
-    const uint32_t uart_max_exec_tmt = MAX_EXEC_TMT;
+    const uint32_t uart_max_exec_tmt = 1000 * config.exec_timeout;
 
     memset(tx_buffer, 0, sizeof(tx_buffer));
     memset(rx_buffer, 0, sizeof(rx_buffer));
@@ -185,14 +176,14 @@ uint8_t __sniffer_rs232_baudrate_calc(enum rs232_calc_type calc_type, uint32_t *
 
     uint32_t res = RES_OK;
 
-    if (calc_type != RS232_CALC_RX) {
+    if (channel_type != RS232_CHANNEL_RX) {
         res = __sniffer_rs232_line_baudrate_calc_init(GPIOA, GPIO_PIN_3, EXTI3_IRQn);
 
         if (res != RES_OK)
             return res;
     }
 
-    if (calc_type != RS232_CALC_TX) {
+    if (channel_type != RS232_CHANNEL_TX) {
         res = __sniffer_rs232_line_baudrate_calc_init(GPIOC, GPIO_PIN_5, EXTI9_5_IRQn);
 
         if (res != RES_OK)
@@ -213,35 +204,35 @@ uint8_t __sniffer_rs232_baudrate_calc(enum rs232_calc_type calc_type, uint32_t *
             break;
 
         /* TX line */
-        if (calc_type != RS232_CALC_RX && !tx_ctx.done) {
+        if (channel_type != RS232_CHANNEL_RX && !tx_ctx.done) {
             __sniffer_rs232_line_baudrate_calc(&tx_ctx);
         }
 
         /* RX line */
-        if (calc_type != RS232_CALC_TX && !rx_ctx.done) {
+        if (channel_type != RS232_CHANNEL_TX && !rx_ctx.done) {
             __sniffer_rs232_line_baudrate_calc(&rx_ctx);
         }
 
         /* Result processing */
         struct baud_calc_ctx *ctx = &rx_ctx;
-        switch (calc_type) {
-        case RS232_CALC_TX:
+        switch (channel_type) {
+        case RS232_CHANNEL_TX:
             ctx = &tx_ctx;
-        case RS232_CALC_RX:
+        case RS232_CHANNEL_RX:
             if (ctx->done) {
                 calc_baudrate = ctx->baudrate;
                 finish_flag = true;
             }
             break;
 
-        case RS232_CALC_ANY:
+        case RS232_CHANNEL_ANY:
             if (tx_ctx.done || rx_ctx.done) {
                 calc_baudrate = tx_ctx.baudrate ? tx_ctx.baudrate : rx_ctx.baudrate;
                 finish_flag = (calc_baudrate != 0) || (tx_ctx.done && rx_ctx.done);
             }
             break;
 
-        case RS232_CALC_ALL:
+        case RS232_CHANNEL_ALL:
             if (tx_ctx.done && rx_ctx.done) {
                 if (tx_ctx.baudrate == rx_ctx.baudrate)
                     calc_baudrate = tx_ctx.baudrate;
@@ -285,9 +276,9 @@ void __sniffer_rs232_uart_error_cb(enum uart_type type, uint32_t error, void *pa
     bsp_uart_start(type);
 }
 
-uint8_t __sniffer_rs232_params_calc(enum rs232_calc_type calc_type, uint32_t baudrate, int8_t *hyp_num)
+uint8_t __sniffer_rs232_params_calc(enum rs232_channel_type channel_type, uint32_t baudrate, int8_t *hyp_num)
 {
-    if (!baudrate || !RS232_CALC_TYPE_VALID(calc_type) || !hyp_num)
+    if (!baudrate || !RS232_CHANNEL_TYPE_VALID(channel_type) || !hyp_num)
         return RES_INVALID_PAR;
 
     *hyp_num = -1;
@@ -306,7 +297,7 @@ uint8_t __sniffer_rs232_params_calc(enum rs232_calc_type calc_type, uint32_t bau
         init_ctx.stopbits = BSP_UART_STOPBITS_1;
         init_ctx.error_isr_cb = __sniffer_rs232_uart_error_cb;
 
-        if (calc_type != RS232_CALC_RX) {
+        if (channel_type != RS232_CHANNEL_RX) {
             memset(&tx_check_ctx, 0, sizeof(tx_check_ctx));
             init_ctx.params = &tx_check_ctx;
 
@@ -316,7 +307,7 @@ uint8_t __sniffer_rs232_params_calc(enum rs232_calc_type calc_type, uint32_t bau
                 break;
         }
 
-        if (calc_type != RS232_CALC_TX) {
+        if (channel_type != RS232_CHANNEL_TX) {
             memset(&rx_check_ctx, 0, sizeof(rx_check_ctx));
             init_ctx.params = &rx_check_ctx;
 
@@ -327,7 +318,7 @@ uint8_t __sniffer_rs232_params_calc(enum rs232_calc_type calc_type, uint32_t bau
         }
 
         bool finish_flag = false;
-        const uint32_t uart_max_exec_tmt = MAX_EXEC_TMT;
+        const uint32_t uart_max_exec_tmt = 1000 * config.exec_timeout;
         uint32_t start_exec_time = HAL_GetTick();
 
         while (true) {
@@ -337,10 +328,10 @@ uint8_t __sniffer_rs232_params_calc(enum rs232_calc_type calc_type, uint32_t bau
             }
 
             uint16_t len = 0;
-            if (calc_type != RS232_CALC_RX && bsp_uart_read(BSP_UART_TYPE_RS232_TX, NULL, &len, 0) == RES_OK)
+            if (channel_type != RS232_CHANNEL_RX && bsp_uart_read(BSP_UART_TYPE_RS232_TX, NULL, &len, 0) == RES_OK)
                 tx_check_ctx.valid_cnt += len;
 
-            if (calc_type != RS232_CALC_TX && bsp_uart_read(BSP_UART_TYPE_RS232_RX, NULL, &len, 0) == RES_OK)
+            if (channel_type != RS232_CHANNEL_TX && bsp_uart_read(BSP_UART_TYPE_RS232_RX, NULL, &len, 0) == RES_OK)
                 rx_check_ctx.valid_cnt += len;
 
             if (tx_check_ctx.overflow || rx_check_ctx.overflow) {
@@ -348,8 +339,8 @@ uint8_t __sniffer_rs232_params_calc(enum rs232_calc_type calc_type, uint32_t bau
                 break;
             }
 
-            bool error_parity_exceed = (tx_check_ctx.error_parity_cnt >= UART_ERROR_THR || rx_check_ctx.error_parity_cnt >= UART_ERROR_THR);
-            bool error_frame_exceed = (tx_check_ctx.error_frame_cnt >= UART_ERROR_THR || rx_check_ctx.error_frame_cnt >= UART_ERROR_THR);
+            bool error_parity_exceed = (tx_check_ctx.error_parity_cnt >= config.uart_error_count || rx_check_ctx.error_parity_cnt >= config.uart_error_count);
+            bool error_frame_exceed = (tx_check_ctx.error_frame_cnt >= config.uart_error_count || rx_check_ctx.error_frame_cnt >= config.uart_error_count);
 
             if (error_frame_exceed || error_parity_exceed) {
                 if (error_frame_exceed)
@@ -359,21 +350,21 @@ uint8_t __sniffer_rs232_params_calc(enum rs232_calc_type calc_type, uint32_t bau
                 break;
             }
 
-            switch (calc_type) {
-            case RS232_CALC_TX:
-                finish_flag = (tx_check_ctx.valid_cnt >= VALID_PACKETS_THR);
+            switch (channel_type) {
+            case RS232_CHANNEL_TX:
+                finish_flag = (tx_check_ctx.valid_cnt >= config.valid_packets_count);
                 break;
 
-            case RS232_CALC_RX:
-                finish_flag = (rx_check_ctx.valid_cnt >= VALID_PACKETS_THR);
+            case RS232_CHANNEL_RX:
+                finish_flag = (rx_check_ctx.valid_cnt >= config.valid_packets_count);
                 break;
 
-            case RS232_CALC_ANY:
-                finish_flag = (tx_check_ctx.valid_cnt >= VALID_PACKETS_THR || rx_check_ctx.valid_cnt >= VALID_PACKETS_THR);
+            case RS232_CHANNEL_ANY:
+                finish_flag = (tx_check_ctx.valid_cnt >= config.valid_packets_count || rx_check_ctx.valid_cnt >= config.valid_packets_count);
                 break;
 
-            case RS232_CALC_ALL:
-                finish_flag = (tx_check_ctx.valid_cnt >= VALID_PACKETS_THR && rx_check_ctx.valid_cnt >= VALID_PACKETS_THR);
+            case RS232_CHANNEL_ALL:
+                finish_flag = (tx_check_ctx.valid_cnt >= config.valid_packets_count && rx_check_ctx.valid_cnt >= config.valid_packets_count);
                 break;
 
             default:
@@ -387,14 +378,14 @@ uint8_t __sniffer_rs232_params_calc(enum rs232_calc_type calc_type, uint32_t bau
         if (res != RES_OK)
             break;
 
-        if (calc_type != RS232_CALC_RX) {
+        if (channel_type != RS232_CHANNEL_RX) {
             res = bsp_uart_stop(BSP_UART_TYPE_RS232_TX);
 
             if (res != RES_OK)
                 break;
         }
 
-        if (calc_type != RS232_CALC_TX) {
+        if (channel_type != RS232_CHANNEL_TX) {
             res = bsp_uart_stop(BSP_UART_TYPE_RS232_RX);
 
             if (res != RES_OK)
@@ -407,14 +398,14 @@ uint8_t __sniffer_rs232_params_calc(enum rs232_calc_type calc_type, uint32_t bau
         }
     } while(__hyp_num);
 
-    if (calc_type != RS232_CALC_RX) {
+    if (channel_type != RS232_CHANNEL_RX) {
         res = bsp_uart_deinit(BSP_UART_TYPE_RS232_TX);
 
         if (res != RES_OK)
             return res;
     }
 
-    if (calc_type != RS232_CALC_TX) {
+    if (channel_type != RS232_CHANNEL_TX) {
         res = bsp_uart_deinit(BSP_UART_TYPE_RS232_RX);
 
         if (res != RES_OK)
@@ -424,8 +415,55 @@ uint8_t __sniffer_rs232_params_calc(enum rs232_calc_type calc_type, uint32_t bau
     return res;
 }
 
-uint8_t sniffer_rs232_init(void)
+uint32_t sniffer_rs232_config_item_range(uint32_t shift, bool is_min)
 {
+    struct sniffer_rs232_config *__config = 0;
+    if (shift == (uint32_t)&__config->valid_packets_count)
+        return is_min ? 1 : UINT32_MAX;
+    else if (shift == (uint32_t)&__config->uart_error_count)
+        return is_min ? 1 : UINT32_MAX;
+    else if (shift == (uint32_t)&__config->baudrate_tolerance)
+        return is_min ? 1 : 100;
+    else if (shift == (uint32_t)&__config->min_detect_bits)
+        return is_min ? 1 : (BUFFER_SIZE / 4);
+    else if (shift == (uint32_t)&__config->exec_timeout)
+        return is_min ? 1 : UINT32_MAX;
+    else if (shift == (uint32_t)&__config->calc_attempts)
+        return is_min ? 1 : UINT32_MAX;
+
+    return 0;
+}
+
+bool sniffer_rs232_config_check(struct sniffer_rs232_config *__config)
+{
+    if (!__config)
+        return false;
+
+    if (!SNIFFER_RS232_CFG_PARA_IS_VALID(valid_packets_count, __config->valid_packets_count))
+        return false;
+
+    if (!SNIFFER_RS232_CFG_PARA_IS_VALID(baudrate_tolerance, __config->baudrate_tolerance))
+        return false;
+
+    if (!SNIFFER_RS232_CFG_PARA_IS_VALID(min_detect_bits, __config->min_detect_bits))
+        return false;
+
+    if (!SNIFFER_RS232_CFG_PARA_IS_VALID(exec_timeout, __config->exec_timeout))
+        return false;
+
+    if (!SNIFFER_RS232_CFG_PARA_IS_VALID(calc_attempts, __config->calc_attempts))
+        return false;
+
+    return true;
+}
+
+uint8_t sniffer_rs232_init(struct sniffer_rs232_config *__config)
+{
+    if (!sniffer_rs232_config_check(__config))
+        return RES_INVALID_PAR;
+
+    memcpy(&config, __config, sizeof(config));
+
     /* RCC GPIO init */
     if (__HAL_RCC_GPIOA_IS_CLK_DISABLED())
         __HAL_RCC_GPIOA_CLK_ENABLE();
@@ -461,7 +499,7 @@ uint8_t sniffer_rs232_init(void)
     HAL_TIM_RegisterCallback(&htim6, HAL_TIM_BASE_MSPINIT_CB_ID, __sniffer_rs232_tim_msp_init);
     HAL_TIM_RegisterCallback(&htim6, HAL_TIM_BASE_MSPDEINIT_CB_ID, __sniffer_rs232_tim_msp_deinit);
 
-    htim6.Init.Prescaler = bsp_rcc_apb_timer_freq_get(htim6.Instance) / TIM_FREQ - 1;
+    htim6.Init.Prescaler = bsp_rcc_apb_timer_freq_get(htim6.Instance) / (1000000 * config.baudrate_tolerance) - 1;
     htim6.Init.Period = UINT16_MAX;
     htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
     htim6.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -497,17 +535,17 @@ uint8_t sniffer_rs232_deinit(void)
     return RES_OK;
 }
 
-uint8_t sniffer_rs232_calc(enum rs232_calc_type calc_type, struct uart_init_ctx *uart_params)
+uint8_t sniffer_rs232_calc(enum rs232_channel_type channel_type, struct uart_init_ctx *uart_params)
 {
-    if (!RS232_CALC_TYPE_VALID(calc_type) || !uart_params)
+    if (!RS232_CHANNEL_TYPE_VALID(channel_type) || !uart_params)
         return RES_INVALID_PAR;
 
     uint8_t res = RES_OK;
     memset(uart_params, 0 , sizeof(struct uart_init_ctx));
 
-    for (uint8_t i = 0; i < CALC_MAX_ATT; i++) {
+    for (uint8_t i = 0; i < config.calc_attempts; i++) {
         uint32_t baudrate = 0;
-        res = __sniffer_rs232_baudrate_calc(calc_type, &baudrate);
+        res = __sniffer_rs232_baudrate_calc(channel_type, &baudrate);
 
         if (res != RES_OK)
             break;
@@ -516,7 +554,7 @@ uint8_t sniffer_rs232_calc(enum rs232_calc_type calc_type, struct uart_init_ctx 
             continue;
 
         int8_t hyp_num = 0;
-        res = __sniffer_rs232_params_calc(calc_type, baudrate, &hyp_num);
+        res = __sniffer_rs232_params_calc(channel_type, baudrate, &hyp_num);
 
         if (res != RES_OK)
             break;

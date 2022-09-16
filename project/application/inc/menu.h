@@ -6,6 +6,18 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+enum menu_color_type {
+    MENU_COLOR_BLACK = 0,
+    MENU_COLOR_RED,
+    MENU_COLOR_GREEN,
+    MENU_COLOR_YELLOW,
+    MENU_COLOR_BLUE,
+    MENU_COLOR_MAGENTA,
+    MENU_COLOR_CYAN,
+    MENU_COLOR_WHITE,
+    MENU_COLOR_MAX
+};
+
 enum menu_pass_type {
     MENU_PASS_NONE = 0,
     MENU_PASS_WITH_PROMPT,
@@ -21,6 +33,16 @@ enum menu_num_type {
     MENU_NUM_MAX
 };
 
+struct menu_color {
+    enum menu_color_type foreground;
+    enum menu_color_type background;
+};
+
+struct menu_color_config {
+    struct menu_color active;
+    struct menu_color inactive;
+};
+
 struct menu_item {
     struct menu_item *next;
     struct menu_item *prev;
@@ -28,6 +50,7 @@ struct menu_item {
     struct menu {
         char *label;
         char filler;
+        struct menu_color_config color_config;
         struct menu_item *items;
     } *menu_entry;
 
@@ -51,8 +74,13 @@ struct menu_config {
     uint8_t (*write_callback) (char *write_str);
 };
 
+#define MENU_COLOR_CONFIG_DEFAULT()  {\
+    .active = {.foreground = MENU_COLOR_BLUE, .background = MENU_COLOR_WHITE},\
+    .inactive = {.foreground = MENU_COLOR_WHITE, .background = MENU_COLOR_BLUE}\
+}
+
 void menu_destroy(struct menu *menu);
-struct menu * menu_create(char *label, char filler);
+struct menu * menu_create(char *label, char filler, struct menu_color_config *color_config);
 
 uint8_t menu_entry(struct menu *menu);
 uint8_t menu_item_value_set(struct menu_item *menu_item, const char *value);

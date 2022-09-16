@@ -121,21 +121,25 @@ static uint8_t __cli_menu_exit(char *input, void *param)
 uint8_t cli_menu_start(void)
 {
     struct menu_config config = {
-        .is_looped = false,
-        .num_delim = ')',
+        .is_looped = true,
+        .num_delim = '.',
         .width = 64,
-        .num_type = MENU_NUM_NONE,
+        .num_type = MENU_NUM_DIGITAL,
         .pass_type = MENU_PASS_WITH_PROMPT,
         .read_callback = __menu_read_cb,
         .write_callback = __menu_write_cb
     };
 
-    struct menu *menu1 = menu_create("CONFIGURATION", '*');
+    //struct menu_color_config color_config_select = MENU_COLOR_CONFIG_DEFAULT();
+    //struct menu_color_config color_config_choose = {.active = {.foreground = MENU_COLOR_YELLOW, .background = MENU_COLOR_RED},
+    //                                                .active = {.foreground = MENU_COLOR_WHITE, .background = MENU_COLOR_BLUE},};
 
-    struct menu *menu11 = menu_create("SUBMENU ONE", '~');
-    struct menu *menu12 = menu_create("SUBMENU SECOND", '=');
-    struct menu *menu13 = menu_create("SUBMENU THIRD", '+');
-    struct menu *menu14 = menu_create("SUBMENU ENORMOUS", ' ');
+    struct menu *menu1 = menu_create("CONFIGURATION", '*', NULL);
+
+    struct menu *menu11 = menu_create("SUBMENU ONE", '~', NULL);
+    struct menu *menu12 = menu_create("SUBMENU SECOND", '=', NULL);
+    struct menu *menu13 = menu_create("SUBMENU THIRD", '+', NULL);
+    struct menu *menu14 = menu_create("SUBMENU ENORMOUS", ' ', NULL);
 
     menu_item_add(menu1, "Menu one", NULL, NULL, __cli_menu_entry, NULL, menu11);
     menu_item_add(menu1, "Menu second", NULL, NULL, __cli_menu_entry, NULL, menu12);

@@ -1,23 +1,23 @@
 #include "menu.h"
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 
-#define MAX_STR_LEN         256
+#define MAX_STR_LEN                     256
 
-#define MENU_COLOR_INACTIVE         "\33[37;44m"
-#define MENU_COLOR_ACTIVE           "\33[34;47m"
-#define MENU_COLOR_RESET            "\33[37;40m"
+#define MENU_COLOR_SIZE                 10
 
-#define MENU_RETURN_HOME            "\33[H"
-#define MENU_LINE_UP                "\33[A"
-#define MENU_LINE_DOWN              "\33[B"
-#define MENU_LINE_ERASE             "\33[2K"
-#define MENU_SCREEN_ERASE           "\33[2J"
+#define MENU_COLOR_RESET                "\33[37;40m"
+#define MENU_RETURN_HOME                "\33[H"
+#define MENU_LINE_UP                    "\33[A"
+#define MENU_LINE_DOWN                  "\33[B"
+#define MENU_LINE_ERASE                 "\33[2K"
+#define MENU_SCREEN_ERASE               "\33[2J"
 
-#define MENU_PASS_TYPE_IS_VALID(X)  (((uint32_t)(X)) < MENU_PASS_MAX)
-#define MENU_NUM_TYPE_IS_VALID(X)   (((uint32_t)(X)) < MENU_NUM_MAX)
+#define MENU_PASS_TYPE_IS_VALID(X)      (((uint32_t)(X)) < MENU_PASS_MAX)
+#define MENU_NUM_TYPE_IS_VALID(X)       (((uint32_t)(X)) < MENU_NUM_MAX)
 
-#define IS_PRINTABLE(X)             (X >= ' ' && X <= '~')
+#define IS_PRINTABLE(X)                 (X >= ' ' && X <= '~')
 
 static struct menu_config menu_config = {0};
 static struct menu_item *cur_item = NULL;
@@ -138,16 +138,23 @@ static uint8_t __menu_redraw(struct menu_item *prev_item_active, struct menu_ite
         }
     }
     menu_config.write_callback(MENU_LINE_DOWN "\r");
+
     uint8_t res_enum = RES_OK;
+    struct menu_color_config color_cfg = cur_menu->color_config;
+
+    char color_active[MENU_COLOR_SIZE] = {0};
+    char color_inactive[MENU_COLOR_SIZE] = {0};
+    snprintf(color_active, MENU_COLOR_SIZE, "\33[3%1d;4%1dm", color_cfg.active.foreground, color_cfg.active.background);
+    snprintf(color_inactive, MENU_COLOR_SIZE, "\33[3%1d;4%1dm", color_cfg.inactive.foreground, color_cfg.inactive.background);
 
     while (item) {
         res_enum = __menu_enumerator_inc(menu_config.num_type, enumerator, sizeof(enumerator) - 1);
 
         if (full_redraw || item == prev_item_active || item == new_item_active) {
             if (cur_item == item)
-                menu_config.write_callback(MENU_COLOR_ACTIVE);
+                menu_config.write_callback(color_active);
             else
-                menu_config.write_callback(MENU_COLOR_INACTIVE);
+                menu_config.write_callback(color_inactive);
 
             uint32_t cur_len = 0;
 
@@ -390,9 +397,9 @@ uint8_t menu_start(struct menu_config *config, struct menu *menu)
     return RES_OK;
 }
 
-struct menu * menu_create(char *label, char filler)
+struct menu * menu_create(char *label, char filler, struct menu_color_config *color_config)
 {
-    if (!__menu_strlen(label) || !filler)
+    if (!__menu_strlen(label) || !IS_PRINTABLE(filler))
         return NULL;
 
     uint8_t res = RES_OK;
@@ -421,6 +428,13 @@ struct menu * menu_create(char *label, char filler)
         memcpy(menu->label, label, label_len);
 
         menu->filler = filler;
+
+        if (!color_config) {
+            struct menu_color_config default_color_config = MENU_COLOR_CONFIG_DEFAULT();
+            menu->color_config = default_color_config;
+        } else {
+            memcpy(&menu->color_config, color_config, sizeof(struct menu_color_config));
+        }
     } while(0);
 
     if (res != RES_OK) {
