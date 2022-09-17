@@ -4,7 +4,9 @@
 #include "bsp_lcd1602.h"
 #include "bsp_uart.h"
 #include "bsp_led_rgb.h"
+#include "bsp_crc.h"
 #include "sniffer_rs232.h"
+#include "config.h"
 #include "cli.h"
 #include <stdbool.h>
 
@@ -12,6 +14,8 @@ static void internal_error(void)
 {
     bsp_led_rgb_set(255, 0, 0);
     bsp_led_rgb_blink_enable(250, 250);
+
+    while(1){}
 }
 
 int main()
@@ -28,17 +32,21 @@ int main()
 
     bsp_led_rgb_calibrate(255, 75, 12);
 
-    if( !(DWT->CTRL & 1) )
-    {
-        CoreDebug->DEMCR |= 0x01000000;
-        DWT->CTRL |= 1; // enable the counter
+    res = bsp_crc_init();
+
+    if (res != RES_OK)
+        internal_error();
+
+    struct flash_config config = {0};
+
+    if (config_read(&config) != RES_OK) {
+        struct flash_config flash_config_default = FLASH_CONFIG_DEFAULT();
+        config = flash_config_default;
+        res = config_save(&config);
+
+        if (res != RES_OK)
+            internal_error();
     }
-
-    //uint32_t t1 = DWT->CYCCNT;
-    //HAL_Delay(1);
-    //uint32_t t2 = DWT->CYCCNT;
-
-    //uint32_t dir = t2 - t1;
 
     lcd1602_settings_t settings = {
         .num_line = LCD1602_NUM_LINE_2,

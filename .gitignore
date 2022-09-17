@@ -17,6 +17,10 @@
 *.dep
 **/settings/**
 **/Debug/**
+Backup of*.ewp
+Backup (*) of*.ewp
+Backup of*.dep
+Backup (*) of*.dep
 *.sim
 *.dnx
 *.out

@@ -2131,6 +2131,9 @@
             <name>$PROJ_DIR$\..\application\src\cli.c</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\application\src\config.c</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\application\src\main.c</name>
         </file>
         <file>
@@ -2145,6 +2148,9 @@
     </group>
     <group>
         <name>bsp</name>
+        <file>
+            <name>$PROJ_DIR$\..\bsp\src\bsp_crc.c</name>
+        </file>
         <file>
             <name>$PROJ_DIR$\..\bsp\src\bsp_gpio.c</name>
         </file>
@@ -2179,6 +2185,9 @@
             </file>
             <file>
                 <name>$PROJ_DIR$\..\drivers\stm32f4xx_hal_driver\Src\stm32f4xx_hal_cortex.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\drivers\stm32f4xx_hal_driver\Src\stm32f4xx_hal_crc.c</name>
             </file>
             <file>
                 <name>$PROJ_DIR$\..\drivers\stm32f4xx_hal_driver\Src\stm32f4xx_hal_dma.c</name>

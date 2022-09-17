@@ -140,13 +140,13 @@ static uint8_t __lcd1602_data_write(uint8_t data)
     return __lcd1602_read_write(&data, LCD1602_DATA_REG, LCD1602_WRITE_MODE);
 }
 
-static uint8_t __lcd1602_data_read(uint8_t *data)
+/*static uint8_t __lcd1602_data_read(uint8_t *data)
 {
     if (!data)
         return RES_INVALID_PAR;
 
     return __lcd1602_read_write(data, LCD1602_DATA_REG, LCD1602_READ_MODE);
-}
+}*/
 
 static uint8_t __lcd1602_wait(const uint32_t timeout)
 {
