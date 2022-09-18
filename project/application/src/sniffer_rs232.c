@@ -442,6 +442,9 @@ bool sniffer_rs232_config_check(struct sniffer_rs232_config *__config)
     if (!SNIFFER_RS232_CFG_PARA_IS_VALID(valid_packets_count, __config->valid_packets_count))
         return false;
 
+    if (!SNIFFER_RS232_CFG_PARA_IS_VALID(uart_error_count, __config->uart_error_count))
+        return false;
+
     if (!SNIFFER_RS232_CFG_PARA_IS_VALID(baudrate_tolerance, __config->baudrate_tolerance))
         return false;
 

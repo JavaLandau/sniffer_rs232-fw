@@ -6,6 +6,8 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#define MENU_MAX_STR_LEN                256
+
 enum menu_color_type {
     MENU_COLOR_BLACK = 0,
     MENU_COLOR_RED,
@@ -79,14 +81,16 @@ struct menu_config {
     .inactive = {.foreground = MENU_COLOR_WHITE, .background = MENU_COLOR_BLUE}\
 }
 
-void menu_destroy(struct menu *menu);
-struct menu * menu_create(char *label, char filler, struct menu_color_config *color_config);
+void menu_all_destroy(void);
+struct menu *menu_create(char *label, char filler, struct menu_color_config *color_config);
 
 uint8_t menu_entry(struct menu *menu);
 uint8_t menu_item_value_set(struct menu_item *menu_item, const char *value);
-struct menu_item * menu_current_item_get(void);
+struct menu_item *menu_current_item_get(void);
 char *menu_item_label_get(struct menu_item *menu_item);
-struct menu_item *menu_item_by_label_get(struct menu *menu, char *label);
+struct menu *menu_by_label_get(const char *label);
+struct menu_item *menu_item_by_label_get(struct menu *menu, const char *label);
+struct menu_item *menu_item_by_label_only_get(const char *label);
 uint8_t menu_start(struct menu_config *config, struct menu *menu);
 uint8_t menu_exit(void);
 struct menu_item * menu_item_add(struct menu *menu,

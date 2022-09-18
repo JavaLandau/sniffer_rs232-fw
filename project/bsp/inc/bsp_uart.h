@@ -4,8 +4,6 @@
 #include <stdint.h>
 #include "stm32f4xx_hal.h"
 
-#define UART_BAUDRATE_MAX       (921600)
-
 #define UART_TYPE_VALID(X)      (((uint32_t)(X) < BSP_UART_TYPE_MAX))
 #define UART_WORDLEN_VALID(X)   (((X) == BSP_UART_WORDLEN_8) || ((X) == BSP_UART_WORDLEN_9))
 #define UART_PARITY_VALID(X)    (((X) == BSP_UART_PARITY_NONE) || ((X) == BSP_UART_PARITY_EVEN) || ((X) == BSP_UART_PARITY_ODD))

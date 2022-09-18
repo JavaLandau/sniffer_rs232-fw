@@ -504,7 +504,7 @@ uint8_t bsp_uart_init(enum uart_type type, struct uart_init_ctx *init)
     if (!UART_STOPBITS_VALID(init->stopbits))
         return RES_INVALID_PAR;
 
-    if (!init->baudrate || init->baudrate > UART_BAUDRATE_MAX)
+    if (!init->baudrate)
         return RES_INVALID_PAR;
 
     uint8_t res = RES_OK;

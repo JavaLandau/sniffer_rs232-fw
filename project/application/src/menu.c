@@ -3,8 +3,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#define MAX_STR_LEN                     256
-
 #define MENU_COLOR_SIZE                 10
 
 #define MENU_COLOR_RESET                "\33[37;40m"
@@ -19,16 +17,23 @@
 
 #define IS_PRINTABLE(X)                 (X >= ' ' && X <= '~')
 
+struct menu_list {
+    struct menu_list *next;
+    struct menu *menu;
+};
+
 static struct menu_config menu_config = {0};
 static struct menu_item *cur_item = NULL;
 static struct menu_item *prev_item = NULL;
 static struct menu *cur_menu = NULL;
 
-static bool __exit = false;
+struct menu_list *menu_list = NULL;
+
+static bool __exit = true;
 
 static uint32_t __menu_strlen(const char *str)
 {
-    return str ? strnlen(str, MAX_STR_LEN) : 0;
+    return str ? strnlen(str, MENU_MAX_STR_LEN) : 0;
 }
 
 static struct menu_item * __menu_get_last_item(void)
@@ -42,6 +47,23 @@ static struct menu_item * __menu_get_last_item(void)
         loc_item = loc_item->next;
 
     return loc_item;
+}
+
+static bool __menu_item_is_in_menu(struct menu *menu, struct menu_item *menu_item)
+{
+    if (!menu || !menu_item)
+        return false;
+
+    struct menu_item *loc_item = menu->items;
+
+    while (loc_item) {
+        if (loc_item == menu_item)
+            break;
+
+        loc_item = loc_item->next;
+    }
+
+    return (loc_item == menu_item);
 }
 
 static uint8_t __menu_enumerator_inc(enum menu_num_type num_type, char *enumerator, uint8_t enum_len)
@@ -108,6 +130,9 @@ static uint8_t __menu_redraw(struct menu_item *prev_item_active, struct menu_ite
 {
     if (!menu_config.write_callback || !cur_menu || !cur_item)
         return RES_NOT_INITIALIZED;
+
+    if (__exit)
+        return RES_OK;
 
     bool full_redraw = !prev_item_active && !new_item_active;
     struct menu_item *item = cur_menu->items;
@@ -213,7 +238,7 @@ uint8_t menu_exit(void)
     return RES_OK;
 }
 
-struct menu_item * menu_current_item_get(void)
+struct menu_item *menu_current_item_get(void)
 {
     return cur_item;
 }
@@ -226,7 +251,7 @@ char *menu_item_label_get(struct menu_item *menu_item)
     return menu_item->label;
 }
 
-struct menu_item *menu_item_by_label_get(struct menu *menu, char *label)
+struct menu_item *menu_item_by_label_get(struct menu *menu, const char *label)
 {
     if (!menu)
         return NULL;
@@ -236,12 +261,59 @@ struct menu_item *menu_item_by_label_get(struct menu *menu, char *label)
 
     struct menu_item *item = menu->items;
     while (item) {
-        if (!strncmp(item->label, label, MAX_STR_LEN))
+        if (!strncmp(item->label, label, MENU_MAX_STR_LEN))
             break;
         item = item->next;
     }
 
     return item;
+}
+
+struct menu_item *menu_item_by_label_only_get(const char *label)
+{
+    uint32_t len = __menu_strlen(label);
+    if (!len || len == MENU_MAX_STR_LEN)
+        return NULL;
+
+    char *loc_label = (char*)malloc(len + 1);
+
+    if (!loc_label)
+        return NULL;
+
+    memset(loc_label, 0, len + 1);
+    memcpy(loc_label, label, len);
+
+    struct menu_item *menu_item = NULL;
+
+    char *p_delim = strstr(loc_label, "\\");
+
+    if (p_delim && (p_delim - loc_label) < len) {
+        char *menu_label = loc_label;
+        char *menu_item_label = p_delim + 1;
+        *p_delim = 0;
+
+        menu_item = menu_item_by_label_get(menu_by_label_get(menu_label), menu_item_label);
+    }
+
+    free(loc_label);
+    return menu_item;
+}
+
+struct menu *menu_by_label_get(const char *label)
+{
+    if (!label)
+        return NULL;
+
+    struct menu_list *menu_list_item = menu_list;
+    while (menu_list_item) {
+        if (menu_list_item->menu) {
+            if (!strncmp(menu_list_item->menu->label, label, MENU_MAX_STR_LEN))
+                break;
+        }
+        menu_list_item = menu_list_item->next;
+    }
+
+    return menu_list_item ? menu_list_item->menu : NULL;
 }
 
 uint8_t menu_item_value_set(struct menu_item *menu_item, const char *value)
@@ -252,6 +324,7 @@ uint8_t menu_item_value_set(struct menu_item *menu_item, const char *value)
     if (!menu_item->value_lower_border)
         return RES_NOT_ALLOWED;
 
+    uint8_t res = RES_OK;
     uint32_t len = __menu_strlen(value);
 
     if (menu_item->value_len < len) {
@@ -268,10 +341,14 @@ uint8_t menu_item_value_set(struct menu_item *menu_item, const char *value)
         menu_item->value_len = len;
     }
 
-    memset(menu_item->value, 0, menu_item->value_len + 1);
-    memcpy(menu_item->value, value, len);
+    if (menu_item->value_len)
+        memset(menu_item->value, 0, menu_item->value_len + 1);
 
-    uint8_t res = __menu_redraw(NULL, menu_item);
+    if (len)
+        memcpy(menu_item->value, value, len);
+
+    if (__menu_item_is_in_menu(cur_menu, menu_item))
+        res = __menu_redraw(NULL, menu_item);
 
     return res;
 }
@@ -321,7 +398,7 @@ uint8_t menu_start(struct menu_config *config, struct menu *menu)
     if (res != RES_OK)
         return res;
 
-    char input_pass_str[MAX_STR_LEN] = {0};
+    char input_pass_str[MENU_MAX_STR_LEN] = {0};
     uint32_t pass_count = 0;
     char *input_str = NULL;
 
@@ -344,7 +421,7 @@ uint8_t menu_start(struct menu_config *config, struct menu *menu)
                         cur_item = cur_item->prev;
 
                     pass_count = 0;
-                    memset(input_pass_str, 0, MAX_STR_LEN);
+                    memset(input_pass_str, 0, MENU_MAX_STR_LEN);
                 }
             } else if (strstr(input_str, MENU_LINE_DOWN)) {
                 if (cur_item->next || (!cur_item->next && menu_config.is_looped)) {
@@ -357,7 +434,7 @@ uint8_t menu_start(struct menu_config *config, struct menu *menu)
                         cur_item = cur_item->next;
 
                     pass_count = 0;
-                    memset(input_pass_str, 0, MAX_STR_LEN);
+                    memset(input_pass_str, 0, MENU_MAX_STR_LEN);
                 }
             } else {
                 char *p = strstr(input_str, "\x0D");
@@ -370,8 +447,8 @@ uint8_t menu_start(struct menu_config *config, struct menu *menu)
                             input_str[i] = ' ';
                     }
 
-                    if (pass_count < MAX_STR_LEN) {
-                        uint32_t count = MIN(__menu_strlen(input_str), MAX_STR_LEN - pass_count);
+                    if (pass_count < MENU_MAX_STR_LEN) {
+                        uint32_t count = MIN(__menu_strlen(input_str), MENU_MAX_STR_LEN - pass_count);
                         memcpy(&input_pass_str[pass_count], input_str, count);
                         pass_count += count;
                     }
@@ -385,7 +462,7 @@ uint8_t menu_start(struct menu_config *config, struct menu *menu)
                         cur_item->callback(input_pass_str, cur_item->param);
 
                     pass_count = 0;
-                    memset(input_pass_str, 0, MAX_STR_LEN);
+                    memset(input_pass_str, 0, MENU_MAX_STR_LEN);
                 }
             }
 
@@ -397,7 +474,7 @@ uint8_t menu_start(struct menu_config *config, struct menu *menu)
     return RES_OK;
 }
 
-struct menu * menu_create(char *label, char filler, struct menu_color_config *color_config)
+struct menu *menu_create(char *label, char filler, struct menu_color_config *color_config)
 {
     if (!__menu_strlen(label) || !IS_PRINTABLE(filler))
         return NULL;
@@ -435,6 +512,26 @@ struct menu * menu_create(char *label, char filler, struct menu_color_config *co
         } else {
             memcpy(&menu->color_config, color_config, sizeof(struct menu_color_config));
         }
+
+        struct menu_list *menu_list_item = (struct menu_list*)malloc(sizeof(struct menu_list));
+
+        if (!menu_list_item) {
+            res = RES_MEMORY_ERR;
+            break;
+        }
+
+        menu_list_item->menu = menu;
+        menu_list_item->next = NULL;
+
+        struct menu_list *menu_list_cur_item = menu_list;
+
+        while(menu_list_cur_item && menu_list_cur_item->next)
+            menu_list_cur_item = menu_list_cur_item->next;
+
+        if (!menu_list_cur_item)
+            menu_list = menu_list_item;
+        else
+            menu_list_cur_item->next = menu_list_item;
     } while(0);
 
     if (res != RES_OK) {
@@ -450,20 +547,28 @@ struct menu * menu_create(char *label, char filler, struct menu_color_config *co
     return menu;
 }
 
-void menu_destroy(struct menu *menu)
+void menu_all_destroy(void)
 {
-    if (!menu)
-        return;
+    struct menu_list *menu_list_item = menu_list;
 
-    struct menu_item *item = menu->items;
-    while(item) {
-        struct menu_item * temp_item = item;
+    while (menu_list_item) {
+        if (menu_list_item->menu) {
+            struct menu_item *item = menu_list_item->menu->items;
+            while(item) {
+                struct menu_item * temp_item = item->next;
 
-        free(item);
-        item = temp_item->next;
+                free(item);
+                item = temp_item;
+            }
+
+            free(menu_list_item->menu);
+        }
+
+        struct menu_list *temp_menu_list_item = menu_list_item->next;
+
+        free(menu_list_item);
+        menu_list_item = temp_menu_list_item;
     }
-
-    free(menu);
 }
 
 struct menu_item * menu_item_add(struct menu *menu,

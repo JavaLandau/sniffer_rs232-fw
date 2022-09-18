@@ -76,7 +76,7 @@ int main()
     if (res != RES_OK)
         internal_error();
 
-    cli_menu_start();
+    cli_menu_start(&config);
 
     return 0;
 }
