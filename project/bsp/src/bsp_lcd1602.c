@@ -279,7 +279,8 @@ uint8_t bsp_lcd1602_init(lcd1602_settings_t *init_settings)
     if(res != RES_OK)
         return res;
 
-    res = bsp_lcd1602_entry_mode_set(init_settings->type_move_cursor, init_settings->shift_entire_disp);
+    res = bsp_lcd1602_entry_mode_set(init_settings->type_move_cursor,
+                                    init_settings->shift_entire_disp);
 
     if (res != RES_OK)
         return res;

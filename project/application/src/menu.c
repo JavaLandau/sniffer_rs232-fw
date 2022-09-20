@@ -17,17 +17,12 @@
 
 #define IS_PRINTABLE(X)                 (X >= ' ' && X <= '~')
 
-struct menu_list {
-    struct menu_list *next;
-    struct menu *menu;
-};
-
 static struct menu_config menu_config = {0};
 static struct menu_item *cur_item = NULL;
 static struct menu_item *prev_item = NULL;
 static struct menu *cur_menu = NULL;
 
-struct menu_list *menu_list = NULL;
+struct menu *menu_list = NULL;
 
 static bool __exit = true;
 
@@ -140,6 +135,14 @@ static uint8_t __menu_redraw(struct menu_item *prev_item_active, struct menu_ite
     char single_char_buff[2] = {0};
     char enumerator[4] = {0};
 
+    uint8_t res_enum = RES_OK;
+    struct menu_color_config color_cfg = cur_menu->color_config;
+
+    char color_active[MENU_COLOR_SIZE] = {0};
+    char color_inactive[MENU_COLOR_SIZE] = {0};
+    snprintf(color_active, MENU_COLOR_SIZE, "\33[3%1d;4%1dm", color_cfg.active.foreground, color_cfg.active.background);
+    snprintf(color_inactive, MENU_COLOR_SIZE, "\33[3%1d;4%1dm", color_cfg.inactive.foreground, color_cfg.inactive.background);
+
     menu_config.write_callback(MENU_RETURN_HOME);
 
     if (full_redraw) {
@@ -162,15 +165,18 @@ static uint8_t __menu_redraw(struct menu_item *prev_item_active, struct menu_ite
                 menu_config.write_callback(single_char_buff);
         }
     }
+
     menu_config.write_callback(MENU_LINE_DOWN "\r");
 
-    uint8_t res_enum = RES_OK;
-    struct menu_color_config color_cfg = cur_menu->color_config;
-
-    char color_active[MENU_COLOR_SIZE] = {0};
-    char color_inactive[MENU_COLOR_SIZE] = {0};
-    snprintf(color_active, MENU_COLOR_SIZE, "\33[3%1d;4%1dm", color_cfg.active.foreground, color_cfg.active.background);
-    snprintf(color_inactive, MENU_COLOR_SIZE, "\33[3%1d;4%1dm", color_cfg.inactive.foreground, color_cfg.inactive.background);
+    single_char_buff[0] = ' ';
+    menu_config.write_callback(color_inactive);
+    for (uint32_t i = 0; i < menu_config.indent; i++) {
+        if (full_redraw) {
+            for (uint32_t j = 0; j < menu_config.width; j++)
+                menu_config.write_callback(single_char_buff);
+        }
+        menu_config.write_callback(MENU_LINE_DOWN "\r");
+    }
 
     while (item) {
         res_enum = __menu_enumerator_inc(menu_config.num_type, enumerator, sizeof(enumerator) - 1);
@@ -221,6 +227,16 @@ static uint8_t __menu_redraw(struct menu_item *prev_item_active, struct menu_ite
 
         menu_config.write_callback(MENU_LINE_DOWN "\r");
         item = item->next;
+    }
+
+    single_char_buff[0] = ' ';
+    menu_config.write_callback(color_inactive);
+    for (uint32_t i = 0; i < menu_config.indent; i++) {
+        if (full_redraw) {
+            for (uint32_t j = 0; j < menu_config.width; j++)
+                menu_config.write_callback(single_char_buff);
+        }
+        menu_config.write_callback(MENU_LINE_DOWN "\r");
     }
 
     menu_config.write_callback(MENU_COLOR_RESET);
@@ -304,16 +320,15 @@ struct menu *menu_by_label_get(const char *label)
     if (!label)
         return NULL;
 
-    struct menu_list *menu_list_item = menu_list;
-    while (menu_list_item) {
-        if (menu_list_item->menu) {
-            if (!strncmp(menu_list_item->menu->label, label, MENU_MAX_STR_LEN))
-                break;
-        }
-        menu_list_item = menu_list_item->next;
+    struct menu *menu = menu_list;
+    while (menu) {
+        if (!strncmp(menu->label, label, MENU_MAX_STR_LEN))
+            break;
+
+        menu = menu->next;
     }
 
-    return menu_list_item ? menu_list_item->menu : NULL;
+    return menu;
 }
 
 uint8_t menu_item_value_set(struct menu_item *menu_item, const char *value)
@@ -513,25 +528,15 @@ struct menu *menu_create(char *label, char filler, struct menu_color_config *col
             memcpy(&menu->color_config, color_config, sizeof(struct menu_color_config));
         }
 
-        struct menu_list *menu_list_item = (struct menu_list*)malloc(sizeof(struct menu_list));
+        struct menu *menu_list_item = menu_list;
+        while (menu_list_item && menu_list_item->next)
+            menu_list_item = menu_list_item->next;
 
-        if (!menu_list_item) {
-            res = RES_MEMORY_ERR;
-            break;
-        }
-
-        menu_list_item->menu = menu;
-        menu_list_item->next = NULL;
-
-        struct menu_list *menu_list_cur_item = menu_list;
-
-        while(menu_list_cur_item && menu_list_cur_item->next)
-            menu_list_cur_item = menu_list_cur_item->next;
-
-        if (!menu_list_cur_item)
-            menu_list = menu_list_item;
+        if (!menu_list_item)
+            menu_list = menu;
         else
-            menu_list_cur_item->next = menu_list_item;
+            menu_list_item->next = menu;
+
     } while(0);
 
     if (res != RES_OK) {
@@ -549,26 +554,23 @@ struct menu *menu_create(char *label, char filler, struct menu_color_config *col
 
 void menu_all_destroy(void)
 {
-    struct menu_list *menu_list_item = menu_list;
+    struct menu *menu = menu_list;
 
-    while (menu_list_item) {
-        if (menu_list_item->menu) {
-            struct menu_item *item = menu_list_item->menu->items;
-            while(item) {
-                struct menu_item * temp_item = item->next;
+    while (menu) {
+        struct menu_item *item = menu->items;
+        while(item) {
+            struct menu_item *temp_item = item->next;
 
-                free(item);
-                item = temp_item;
-            }
-
-            free(menu_list_item->menu);
+            free(item);
+            item = temp_item;
         }
 
-        struct menu_list *temp_menu_list_item = menu_list_item->next;
-
-        free(menu_list_item);
-        menu_list_item = temp_menu_list_item;
+        struct menu *temp_menu = menu->next;
+        free(menu);
+        menu = temp_menu;
     }
+
+    menu_list = NULL;
 }
 
 struct menu_item * menu_item_add(struct menu *menu,

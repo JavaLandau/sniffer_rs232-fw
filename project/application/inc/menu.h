@@ -54,6 +54,7 @@ struct menu_item {
         char filler;
         struct menu_color_config color_config;
         struct menu_item *items;
+        struct menu *next;
     } *menu_entry;
 
     uint8_t (*callback) (char *input, void *param);
@@ -69,6 +70,7 @@ struct menu_item {
 struct menu_config {
     bool is_looped;
     uint32_t width;
+    uint32_t indent;
     enum menu_pass_type pass_type;
     enum menu_num_type num_type;
     char num_delim;

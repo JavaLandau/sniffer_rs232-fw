@@ -4,7 +4,6 @@
 
 static CRC_HandleTypeDef crc_module = {.Instance = CRC};
 
-
 void HAL_CRC_MspInit(CRC_HandleTypeDef *hcrc)
 {
     if (!hcrc || hcrc->Instance != CRC)

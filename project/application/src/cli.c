@@ -16,6 +16,7 @@ static struct {
     bool uart_overflow;
 } cli_state = {0};
 
+static struct flash_config old_config = {0};
 static struct flash_config *flash_config = NULL;
 static bool is_config_changed = false;
 
@@ -158,8 +159,7 @@ char * __cli_prompt_generator(const char *menu_item_label)
 
 static uint8_t __cli_menu_entry(char *input, void *param)
 {
-    menu_entry(menu_current_item_get()->menu_entry);
-    return RES_OK;
+    return menu_entry(NULL);
 }
 
 static uint8_t __cli_menu_exit(char *input, void *param)
@@ -179,6 +179,7 @@ static uint8_t __cli_menu_exit(char *input, void *param)
         else
             menu_exit();
     } else {
+        *flash_config = old_config;
         menu_exit();
     }
 
@@ -246,7 +247,7 @@ static uint8_t __cli_menu_set_defaults(char *input, void *param)
 
     if (memcmp(&def_config, flash_config, sizeof(def_config))) {
         is_config_changed = true;
-        memcpy(flash_config, &def_config, sizeof(def_config));
+        *flash_config = def_config;
         __cli_menu_cfg_values_set(flash_config);
     }
 
@@ -337,7 +338,7 @@ static uint8_t __cli_menu_cfg_set(char *input, void *param)
 
     if (memcmp(&loc_config, flash_config, sizeof(loc_config)) && sniffer_rs232_config_check(&loc_config.alg_config)) {
         is_config_changed = true;
-        memcpy(flash_config, &loc_config, sizeof(loc_config));
+        *flash_config = loc_config;
         __cli_menu_cfg_values_set(flash_config);
     }
 
@@ -430,13 +431,16 @@ uint8_t cli_menu_start(struct flash_config *config)
     if (!config)
         return RES_INVALID_PAR;
 
+    old_config = *config;
     flash_config = config;
+
     is_config_changed = false;
 
     struct menu_config menu_config = {
         .is_looped = true,
         .num_delim = '.',
         .width = 64,
+        .indent = 1,
         .num_type = MENU_NUM_DIGITAL,
         .pass_type = MENU_PASS_WITH_PROMPT,
         .read_callback = __cli_menu_read_cb,
