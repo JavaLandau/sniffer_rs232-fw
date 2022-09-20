@@ -2842,6 +2842,9 @@
     <group>
         <name>application</name>
         <file>
+            <name>$PROJ_DIR$\..\application\src\app_led.c</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\application\src\cli.c</name>
         </file>
         <file>

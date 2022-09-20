@@ -13,7 +13,7 @@ static TIM_HandleTypeDef htim_blink = {.Instance = TIM2};
 
 static uint32_t led_rgb_tim_channels[] = {TIM_CHANNEL_1, TIM_CHANNEL_2, TIM_CHANNEL_3};
 
-static uint8_t coef_r = UINT8_MAX, coef_g = UINT8_MAX, coef_b = UINT8_MAX;
+static float coef_r = 1.0f, coef_g = 1.0f, coef_b = 1.0f;
 
 static void __led_rgb_tim_pwm_msp_init(TIM_HandleTypeDef *htim)
 {
@@ -175,19 +175,25 @@ uint8_t bsp_led_rgb_deinit(void)
     return RES_OK;
 }
 
-uint8_t bsp_led_rgb_calibrate(uint8_t _coef_r, uint8_t _coef_g, uint8_t _coef_b)
+uint8_t bsp_led_rgb_calibrate(const struct bsp_led_rgb *coef_rgb)
 {
-    coef_r = _coef_r;
-    coef_g = _coef_g;
-    coef_b = _coef_b;
+    if (!coef_rgb)
+        return RES_INVALID_PAR;
+
+    coef_r = (float)coef_rgb->r / UINT8_MAX;
+    coef_g = (float)coef_rgb->g / UINT8_MAX;
+    coef_b = (float)coef_rgb->b / UINT8_MAX;
 
     return RES_OK;
 }
 
-uint8_t bsp_led_rgb_set(uint8_t r, uint8_t g, uint8_t b)
+uint8_t bsp_led_rgb_set(const struct bsp_led_rgb *rgb)
 {
+    if (!rgb)
+        return RES_INVALID_PAR;
+
     uint8_t res = RES_OK;
-    float pulse_width[] = {b * (float)coef_b / UINT8_MAX, r * (float)coef_r / UINT8_MAX, g * (float)coef_g / UINT8_MAX};
+    float pulse_width[] = {rgb->b * coef_b, rgb->r * coef_r, rgb->g * coef_g};
 
     TIM_OC_InitTypeDef config_OC = {0};
     config_OC.OCMode = TIM_OCMODE_PWM1;
@@ -238,9 +244,9 @@ uint8_t bsp_led_rgb_set(uint8_t r, uint8_t g, uint8_t b)
     return res;
 }
 
-uint8_t bsp_led_rgb_blink_enable(uint32_t width_on_ms, uint32_t width_off_ms)
+uint8_t bsp_led_rgb_blink_enable(const struct bsp_led_pwm *pwm)
 {
-    if (!width_on_ms || !width_off_ms)
+    if (!pwm || !pwm->width_on_ms || !pwm->width_off_ms)
         return RES_INVALID_PAR;
 
     uint8_t res = __led_rgb_blink_stop();
@@ -252,7 +258,7 @@ uint8_t bsp_led_rgb_blink_enable(uint32_t width_on_ms, uint32_t width_off_ms)
 
     do {
         /* Blink timer init */
-        htim_blink.Init.Period = (BLINK_TIM_FREQ * (width_on_ms + width_off_ms)) / 1000;
+        htim_blink.Init.Period = (BLINK_TIM_FREQ * (pwm->width_on_ms + pwm->width_off_ms)) / 1000;
         htim_blink.Init.Prescaler = __LL_TIM_CALC_PSC(bsp_rcc_apb_timer_freq_get(htim_blink.Instance), BLINK_TIM_FREQ);
 
         if (htim_blink.Init.Prescaler > UINT16_MAX) {
@@ -286,7 +292,7 @@ uint8_t bsp_led_rgb_blink_enable(uint32_t width_on_ms, uint32_t width_off_ms)
         config_OC.OCFastMode = TIM_OCFAST_DISABLE;
         config_OC.OCIdleState = TIM_OCIDLESTATE_RESET;
         config_OC.OCNIdleState = TIM_OCNIDLESTATE_RESET;
-        config_OC.Pulse = (BLINK_TIM_FREQ * width_on_ms) / 1000;
+        config_OC.Pulse = (BLINK_TIM_FREQ * pwm->width_on_ms) / 1000;
 
         if (HAL_TIM_PWM_ConfigChannel(&htim_blink, &config_OC, TIM_CHANNEL_1) != HAL_OK) {
             res = RES_NOK;

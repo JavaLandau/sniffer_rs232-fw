@@ -1,19 +1,18 @@
 #include "common.h"
 #include "stm32f4xx_hal.h"
+#include "app_led.h"
 #include "bsp_rcc.h"
 #include "bsp_lcd1602.h"
 #include "bsp_uart.h"
-#include "bsp_led_rgb.h"
 #include "bsp_crc.h"
 #include "sniffer_rs232.h"
 #include "config.h"
 #include "cli.h"
 #include <stdbool.h>
 
-static void internal_error(void)
+static void internal_error(enum led_event led_event)
 {
-    bsp_led_rgb_set(255, 0, 0);
-    bsp_led_rgb_blink_enable(250, 250);
+    app_led_set(led_event);
 
     while(1){}
 }
@@ -25,17 +24,15 @@ int main()
     if (bsp_rcc_main_config_init() != RES_OK)
         HAL_NVIC_SystemReset();
 
-    uint8_t res = bsp_led_rgb_init();
+    uint8_t res = app_led_init();
 
     if (res != RES_OK)
         HAL_NVIC_SystemReset();
 
-    bsp_led_rgb_calibrate(255, 75, 12);
-
     res = bsp_crc_init();
 
     if (res != RES_OK)
-        internal_error();
+        internal_error(LED_EVENT_CRC_ERROR);
 
     struct flash_config config = {0};
 
@@ -45,7 +42,7 @@ int main()
         res = config_save(&config);
 
         if (res != RES_OK)
-            internal_error();
+            internal_error(LED_EVENT_FLASH_ERROR);
     }
 
     struct lcd1602_settings settings = {
@@ -62,7 +59,7 @@ int main()
     res = bsp_lcd1602_init(&settings);
 
     if (res != RES_OK)
-        internal_error();
+        internal_error(LED_EVENT_LCD1602_ERROR);
 
     bsp_lcd1602_printf("SNIFFER RS-232", "SNIFFER RS-232");
 
@@ -74,7 +71,7 @@ int main()
     res = cli_init();
 
     if (res != RES_OK)
-        internal_error();
+        internal_error(LED_EVENT_COMMON_ERROR);
 
     cli_menu_start(&config);
 
