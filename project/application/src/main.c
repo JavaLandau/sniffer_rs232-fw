@@ -48,7 +48,7 @@ int main()
             internal_error();
     }
 
-    lcd1602_settings_t settings = {
+    struct lcd1602_settings settings = {
         .num_line = LCD1602_NUM_LINE_2,
         .font_size = LCD1602_FONT_SIZE_5X8,
         .type_move_cursor = LCD1602_CURSOR_MOVE_RIGHT,
@@ -64,7 +64,7 @@ int main()
     if (res != RES_OK)
         internal_error();
 
-    bsp_lcd1602_printf("Chmoki", " Chmoki");
+    bsp_lcd1602_printf("SNIFFER RS-232", "SNIFFER RS-232");
 
     /*sniffer_rs232_init();
 

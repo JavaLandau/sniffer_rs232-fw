@@ -49,7 +49,7 @@ static uint16_t lcd1602_data_pins[] = {GPIO_PIN_15, GPIO_PIN_14, GPIO_PIN_13, GP
 #define LCD1602_DATA_PINS               (lcd1602_data_pins[0] | lcd1602_data_pins[1] | lcd1602_data_pins[2] | lcd1602_data_pins[3] | \
                                         lcd1602_data_pins[4] | lcd1602_data_pins[5] | lcd1602_data_pins[6] | lcd1602_data_pins[7])
 
-static lcd1602_settings_t settings;
+static struct lcd1602_settings settings;
 
 static void __lc1602_delay_us(uint32_t delay_us)
 {
@@ -175,9 +175,9 @@ static uint8_t __lcd1602_wait(const uint32_t timeout)
     return res;
 }
 
-uint8_t bsp_lcd1602_function_set(const lcd1602_type_interface_e interface,
-                                const lcd1602_num_line_e num_line,
-                                const lcd1602_font_size_e font_size)
+uint8_t bsp_lcd1602_function_set(const enum lcd1602_type_interface interface,
+                                const enum lcd1602_num_line num_line,
+                                const enum lcd1602_font_size font_size)
 {
     if (!NUM_LINE_IS_VALID(num_line) || 
         !FONT_SIZE_IS_VALID(font_size) || 
@@ -203,7 +203,7 @@ uint8_t bsp_lcd1602_function_set(const lcd1602_type_interface_e interface,
     return res;
 }
 
-uint8_t bsp_lcd1602_init(lcd1602_settings_t *init_settings)
+uint8_t bsp_lcd1602_init(struct lcd1602_settings *init_settings)
 {
     if (!init_settings)
         return RES_INVALID_PAR;
@@ -315,8 +315,8 @@ uint8_t bsp_lcd1602_return_home(void)
     return res;
 }
 
-uint8_t bsp_lcd1602_entry_mode_set( const lcd1602_type_move_cursor_e cursor,
-                                    const lcd1602_shift_entire_disp_e shift_entire)
+uint8_t bsp_lcd1602_entry_mode_set(const enum lcd1602_type_move_cursor cursor,
+                                   const enum lcd1602_shift_entire_disp shift_entire)
 {
     if (!TYPE_MOVE_CURSOR_IS_VALID(cursor) || !SHIFT_ENTIRE_IS_VALID(shift_entire))
         return RES_INVALID_PAR;
@@ -336,9 +336,9 @@ uint8_t bsp_lcd1602_entry_mode_set( const lcd1602_type_move_cursor_e cursor,
     return res;
 }
 
-uint8_t bsp_lcd1602_display_on_off(const lcd1602_disp_state_e disp_state,
-                                    const lcd1602_cursor_state_e cursor_state, 
-                                    const lcd1602_cursor_blink_state_e cursor_blink_state)
+uint8_t bsp_lcd1602_display_on_off(const enum lcd1602_disp_state disp_state,
+                                   const enum lcd1602_cursor_state cursor_state,
+                                   const enum lcd1602_cursor_blink_state cursor_blink_state)
 {
     if (!DISP_STATE_IS_VALID(disp_state) || 
         !CURSOR_STATE_IS_VALID(cursor_state) || 
@@ -363,7 +363,7 @@ uint8_t bsp_lcd1602_display_on_off(const lcd1602_disp_state_e disp_state,
     return res;
 }
 
-uint8_t bsp_lcd1602_cursor_disp_shift(const lcd1602_type_shift_e shift)
+uint8_t bsp_lcd1602_cursor_disp_shift(const enum lcd1602_type_shift shift)
 {
     if (!TYPE_SHIFT_IS_VALID(shift))
         return RES_INVALID_PAR;
@@ -408,7 +408,7 @@ uint8_t bsp_lcd1602_ddram_address_set(const uint8_t address)
     return res;
 }
 
-uint8_t bsp_lcd1602_printf(const char* line1, const char* line2, ...)
+uint8_t bsp_lcd1602_printf(const char *line1, const char *line2, ...)
 {
     va_list args;
 
