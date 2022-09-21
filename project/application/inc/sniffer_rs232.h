@@ -17,6 +17,7 @@ enum rs232_channel_type {
 #define RS232_CHANNEL_TYPE_VALID(TYPE)          (((uint32_t)(TYPE)) < RS232_CHANNEL_MAX)
 
 struct sniffer_rs232_config {
+    enum rs232_channel_type channel_type;
     uint32_t valid_packets_count;
     uint32_t uart_error_count;
     uint8_t baudrate_tolerance;
@@ -31,6 +32,7 @@ struct sniffer_rs232_config {
 #define SNIFFER_RS232_CFG_PARA_IS_VALID(X, V)   (((V) >= SNIFFER_RS232_CFG_PARAM_MIN(X)) && ((V) <= SNIFFER_RS232_CFG_PARAM_MAX(X)))
 
 #define SNIFFER_RS232_CONFIG_DEFAULT() {\
+                .channel_type = RS232_CHANNEL_ANY,\
                 .valid_packets_count = 20,\
                 .uart_error_count = 2,\
                 .baudrate_tolerance = 10,\
@@ -41,7 +43,7 @@ struct sniffer_rs232_config {
 
 uint8_t sniffer_rs232_init(struct sniffer_rs232_config *__config);
 uint8_t sniffer_rs232_deinit(void);
-uint8_t sniffer_rs232_calc(enum rs232_channel_type channel_type, struct uart_init_ctx *uart_params);
+uint8_t sniffer_rs232_calc(struct uart_init_ctx *uart_params);
 uint32_t sniffer_rs232_config_item_range(uint32_t shift, bool is_min);
 bool sniffer_rs232_config_check(struct sniffer_rs232_config *__config);
 

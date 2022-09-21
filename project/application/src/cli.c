@@ -16,7 +16,7 @@ static struct {
     bool uart_overflow;
 } cli_state = {0};
 
-static struct flash_config old_config = {0};
+static struct flash_config old_config;
 static struct flash_config *flash_config = NULL;
 static bool is_config_changed = false;
 
@@ -51,6 +51,13 @@ static char *uart_parity_str[] = {
     "INVALID"
 };
 
+static char *rs232_channel_type_str[] = {
+    "TX",
+    "RX",
+    "ANY",
+    "ALL"
+};
+
 static struct {
     char *label;
     struct menu_color_config *color_config;
@@ -60,6 +67,7 @@ static struct {
     {"PRESETTINGS",         &color_config_select},
     {"SAVE CONFIGURATION",  &color_config_choose},
     {"ALGORITHM",           &color_config_select},
+    {"CHANNEL TYPE",        &color_config_select},
     {"RESET TO DEFAULTS",   &color_config_choose},
     {"TRACE TYPE",          &color_config_select},
     {"IDLE PRESENCE",       &color_config_select},
@@ -85,6 +93,7 @@ static struct {
     {"CONFIGURATION", "IDLE presence", "[]", __cli_menu_entry, "IDLE PRESENCE"},
     {"CONFIGURATION", "TX/RX delimiter", "[]", __cli_menu_entry, "TX/RX DELIMITER"},
     {"CONFIGURATION", "Exit", NULL, __cli_menu_entry, "MAIN MENU"},
+    {"ALGORITHM", "Channel type", "[]", __cli_menu_entry, "CHANNEL TYPE"},
     {"ALGORITHM", "Valid packets", "[]", __cli_menu_cfg_set, NULL},
     {"ALGORITHM", "UART errors", "[]", __cli_menu_cfg_set, NULL},
     {"ALGORITHM", "Tolerance", "[]", __cli_menu_cfg_set, NULL},
@@ -93,6 +102,10 @@ static struct {
     {"ALGORITHM", "Attempts", "[]", __cli_menu_cfg_set, NULL},
     {"ALGORITHM", "Defaults", NULL, __cli_menu_entry, "RESET TO DEFAULTS"},
     {"ALGORITHM", "Exit", NULL, __cli_menu_entry, "CONFIGURATION"},
+    {"CHANNEL TYPE", "TX", NULL, __cli_menu_cfg_set, "ALGORITHM"},
+    {"CHANNEL TYPE", "RX", NULL, __cli_menu_cfg_set, "ALGORITHM"},
+    {"CHANNEL TYPE", "ANY", NULL, __cli_menu_cfg_set, "ALGORITHM"},
+    {"CHANNEL TYPE", "ALL", NULL, __cli_menu_cfg_set, "ALGORITHM"},
     {"RESET TO DEFAULTS", "YES", NULL, __cli_menu_set_defaults, "ALGORITHM"},
     {"RESET TO DEFAULTS", "NO", NULL, __cli_menu_entry, "ALGORITHM"},
     {"TRACE TYPE", "HEX", NULL, __cli_menu_cfg_set, "CONFIGURATION"},
@@ -124,7 +137,7 @@ static struct {
 
 static uint8_t *__menu_rx_buff = NULL;
 
-char * __cli_prompt_generator(const char *menu_item_label)
+static char *__cli_prompt_generator(const char *menu_item_label)
 {
     if (!menu_item_label)
         return NULL;
@@ -186,7 +199,7 @@ static uint8_t __cli_menu_exit(char *input, void *param)
     return RES_OK;
 }
 
-uint8_t __cli_menu_cfg_values_set(struct flash_config *config)
+static uint8_t __cli_menu_cfg_values_set(struct flash_config *config)
 {
     if (!config)
         return RES_INVALID_PAR;
@@ -204,6 +217,9 @@ uint8_t __cli_menu_cfg_values_set(struct flash_config *config)
 
     snprintf(value, sizeof(value), "%s", rs232_interspace_type_str[config->txrx_delimiter]);
     menu_item_value_set(menu_item_by_label_only_get("CONFIGURATION\\TX/RX delimiter"), value);
+
+    snprintf(value, sizeof(value), "%s", rs232_channel_type_str[config->alg_config.channel_type]);
+    menu_item_value_set(menu_item_by_label_only_get("ALGORITHM\\Channel type"), value);
 
     snprintf(value, sizeof(value), "%u", config->alg_config.valid_packets_count);
     menu_item_value_set(menu_item_by_label_only_get("ALGORITHM\\Valid packets"), value);
@@ -298,7 +314,15 @@ static uint8_t __cli_menu_cfg_set(char *input, void *param)
     } else {
         is_menu_entry = true;
 
-        if (menu_item_by_label_only_get("TRACE TYPE\\HEX") == menu_item)
+        if (menu_item_by_label_only_get("CHANNEL TYPE\\TX") == menu_item)
+            loc_config.alg_config.channel_type = RS232_CHANNEL_TX;
+        else if (menu_item_by_label_only_get("CHANNEL TYPE\\RX") == menu_item)
+            loc_config.alg_config.channel_type = RS232_CHANNEL_RX;
+        else if (menu_item_by_label_only_get("CHANNEL TYPE\\ANY") == menu_item)
+            loc_config.alg_config.channel_type = RS232_CHANNEL_ANY;
+        else if (menu_item_by_label_only_get("CHANNEL TYPE\\ALL") == menu_item)
+            loc_config.alg_config.channel_type = RS232_CHANNEL_ALL;
+        else if (menu_item_by_label_only_get("TRACE TYPE\\HEX") == menu_item)
             loc_config.trace_type = RS232_TRACE_HEX;
         else if (menu_item_by_label_only_get("TRACE TYPE\\HEX/ASCII") == menu_item)
             loc_config.trace_type = RS232_TRACE_HYBRID;
@@ -348,13 +372,12 @@ static uint8_t __cli_menu_cfg_set(char *input, void *param)
     return RES_OK;
 }
 
-
-void __cli_uart_overflow_cb(enum uart_type type, void *params)
+static void __cli_uart_overflow_cb(enum uart_type type, void *params)
 {
     cli_state.uart_overflow = true;
 }
 
-void __cli_uart_error_cb(enum uart_type type, uint32_t error, void *params)
+static void __cli_uart_error_cb(enum uart_type type, uint32_t error, void *params)
 {
     cli_state.uart_error = true;
     bsp_uart_start(type);

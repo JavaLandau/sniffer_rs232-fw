@@ -34,7 +34,7 @@ int main()
     if (res != RES_OK)
         internal_error(LED_EVENT_CRC_ERROR);
 
-    struct flash_config config = {0};
+    struct flash_config config;
 
     if (config_read(&config) != RES_OK) {
         struct flash_config flash_config_default = FLASH_CONFIG_DEFAULT();

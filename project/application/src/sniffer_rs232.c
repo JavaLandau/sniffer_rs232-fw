@@ -48,7 +48,7 @@ static const struct hyp_ctx hyp_seq[] = {
     {BSP_UART_WORDLEN_9, BSP_UART_PARITY_NONE, 0}
 };
 
-static struct sniffer_rs232_config config = {0};
+static struct sniffer_rs232_config config;
 
 static void __sniffer_rs232_tim_msp_init(TIM_HandleTypeDef* htim)
 {
@@ -439,6 +439,9 @@ bool sniffer_rs232_config_check(struct sniffer_rs232_config *__config)
     if (!__config)
         return false;
 
+    if (!RS232_CHANNEL_TYPE_VALID(__config->channel_type))
+        return false;
+
     if (!SNIFFER_RS232_CFG_PARA_IS_VALID(valid_packets_count, __config->valid_packets_count))
         return false;
 
@@ -465,7 +468,7 @@ uint8_t sniffer_rs232_init(struct sniffer_rs232_config *__config)
     if (!sniffer_rs232_config_check(__config))
         return RES_INVALID_PAR;
 
-    memcpy(&config, __config, sizeof(config));
+    config = *__config;
 
     /* RCC GPIO init */
     if (__HAL_RCC_GPIOA_IS_CLK_DISABLED())
@@ -538,17 +541,17 @@ uint8_t sniffer_rs232_deinit(void)
     return RES_OK;
 }
 
-uint8_t sniffer_rs232_calc(enum rs232_channel_type channel_type, struct uart_init_ctx *uart_params)
+uint8_t sniffer_rs232_calc(struct uart_init_ctx *uart_params)
 {
-    if (!RS232_CHANNEL_TYPE_VALID(channel_type) || !uart_params)
+    if (!uart_params)
         return RES_INVALID_PAR;
 
     uint8_t res = RES_OK;
-    memset(uart_params, 0 , sizeof(struct uart_init_ctx));
+    memset(uart_params, 0, sizeof(struct uart_init_ctx));
 
     for (uint8_t i = 0; i < config.calc_attempts; i++) {
         uint32_t baudrate = 0;
-        res = __sniffer_rs232_baudrate_calc(channel_type, &baudrate);
+        res = __sniffer_rs232_baudrate_calc(config.channel_type, &baudrate);
 
         if (res != RES_OK)
             break;
@@ -557,7 +560,7 @@ uint8_t sniffer_rs232_calc(enum rs232_channel_type channel_type, struct uart_ini
             continue;
 
         int8_t hyp_num = 0;
-        res = __sniffer_rs232_params_calc(channel_type, baudrate, &hyp_num);
+        res = __sniffer_rs232_params_calc(config.channel_type, baudrate, &hyp_num);
 
         if (res != RES_OK)
             break;
