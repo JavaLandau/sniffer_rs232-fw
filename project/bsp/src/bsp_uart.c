@@ -17,7 +17,7 @@ struct uart_ctx {
     uint16_t rx_idx_set;
 };
 
-struct {
+static struct {
     UART_HandleTypeDef uart;
     struct uart_ctx *ctx;
 } uart_obj[BSP_UART_TYPE_MAX] = {
@@ -26,7 +26,7 @@ struct {
     {.uart = {.Instance = USART3}, .ctx = NULL}
 };
 
-enum uart_type __uart_type_get(USART_TypeDef *instance)
+static enum uart_type __uart_type_get(USART_TypeDef *instance)
 {
     if (instance == UART4)
         return BSP_UART_TYPE_CLI;
@@ -38,7 +38,7 @@ enum uart_type __uart_type_get(USART_TypeDef *instance)
         return BSP_UART_TYPE_MAX;
 }
 
-uint8_t __uart_dma_deinit(enum uart_type type)
+static uint8_t __uart_dma_deinit(enum uart_type type)
 {
     if (!UART_TYPE_VALID(type) || !uart_obj[type].ctx)
         return RES_INVALID_PAR;
@@ -83,7 +83,7 @@ uint8_t __uart_dma_deinit(enum uart_type type)
     return RES_OK;
 }
 
-uint8_t __uart_msp_deinit(enum uart_type type)
+static uint8_t __uart_msp_deinit(enum uart_type type)
 {
     if (!UART_TYPE_VALID(type) || !uart_obj[type].ctx)
         return RES_INVALID_PAR;
@@ -122,7 +122,7 @@ uint8_t __uart_msp_deinit(enum uart_type type)
     return RES_OK;
 }
 
-uint8_t __uart_dma_init(enum uart_type type)
+static uint8_t __uart_dma_init(enum uart_type type)
 {
     if (!UART_TYPE_VALID(type) || !uart_obj[type].ctx)
         return RES_INVALID_PAR;
@@ -272,7 +272,7 @@ uint8_t __uart_dma_init(enum uart_type type)
     return RES_OK;
 }
 
-uint8_t __uart_msp_init(enum uart_type type)
+static uint8_t __uart_msp_init(enum uart_type type)
 {
     if (!UART_TYPE_VALID(type) || !uart_obj[type].ctx)
         return RES_INVALID_PAR;
@@ -354,7 +354,7 @@ uint8_t __uart_msp_init(enum uart_type type)
     return RES_OK;
 }
 
-void __uart_rx_callback(UART_HandleTypeDef *huart, uint16_t pos)
+static void __uart_rx_callback(UART_HandleTypeDef *huart, uint16_t pos)
 {
     if (!huart)
         return;
@@ -386,7 +386,7 @@ void __uart_rx_callback(UART_HandleTypeDef *huart, uint16_t pos)
     }
 }
 
-void __uart_error_callback(enum uart_type type)
+static void __uart_error_callback(enum uart_type type)
 {
     if (!UART_TYPE_VALID(type))
         return;
