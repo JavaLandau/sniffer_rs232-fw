@@ -15,8 +15,6 @@
 #define MENU_PASS_TYPE_IS_VALID(X)      (((uint32_t)(X)) < MENU_PASS_MAX)
 #define MENU_NUM_TYPE_IS_VALID(X)       (((uint32_t)(X)) < MENU_NUM_MAX)
 
-#define IS_PRINTABLE(X)                 (X >= ' ' && X <= '~')
-
 static struct menu_config menu_config = {0};
 static struct menu_item *cur_item = NULL;
 static struct menu_item *prev_item = NULL;

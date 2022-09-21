@@ -12,6 +12,7 @@
 #define MAX_DDRAM_ADDRESS               0x7F
 
 #define LCD1602_LENGTH_LINE             16
+#define LCD1602_MAX_STR_LEN             (4 * LCD1602_LENGTH_LINE)
 
 #define LCD1602_DDRAM_START_LINE        0x00
 #define LCD1602_DDRAM_END_LINE          0x4F
@@ -408,65 +409,119 @@ uint8_t bsp_lcd1602_ddram_address_set(const uint8_t address)
     return res;
 }
 
-uint8_t bsp_lcd1602_printf(const char *line1, const char *line2, ...)
+uint8_t __lcd1602_printf(const char *line1, const char *line2, bool is_centered, va_list argp)
 {
-    va_list args;
+    uint32_t line1_len = strnlen(line1, LCD1602_MAX_STR_LEN);
+    uint32_t line2_len = strnlen(line2, LCD1602_MAX_STR_LEN);
 
-    if (!line1 && !line2)
+    if (!line1_len && !line2_len)
         return RES_INVALID_PAR;
 
-    if (line2 && settings.num_line != LCD1602_NUM_LINE_2)
+    if (line2_len && settings.num_line != LCD1602_NUM_LINE_2)
         return RES_NOT_SUPPORTED;
 
-    va_start(args, line2);
+    for (uint32_t i = 0; i < MAX(line1_len, line2_len); i++) {
+        if (i < line1_len && !IS_PRINTABLE(line1[i]))
+            return RES_NOT_SUPPORTED;
 
-    char first_line[LCD1602_LENGTH_LINE + 1] = {0};
-    char second_line[LCD1602_LENGTH_LINE + 1] = {0};
-
-    if (line1) {
-        if (vsnprintf(first_line, LCD1602_LENGTH_LINE + 1, line1, args) < 0) {
-            va_end(args);
-            return RES_NOK;
-        }
+        if (i < line2_len && !IS_PRINTABLE(line2[i]))
+            return RES_NOT_SUPPORTED;
     }
 
-    if (line2) {
-        if (vsnprintf(second_line, LCD1602_LENGTH_LINE + 1, line2, args) < 0) {
-            va_end(args);
-            return RES_NOK;
+    uint8_t pos = 0;
+    char lines[2 * LCD1602_MAX_STR_LEN + 2] = {0};
+    char disp_lines[2 * LCD1602_LENGTH_LINE + 2] = {0};
+
+    if (line1_len) {
+        memcpy(&lines[pos], line1, line1_len);
+        pos += line1_len;
+    }
+    lines[pos++] = '\33';
+
+    if (line2_len)
+        memcpy(&lines[pos], line2, line2_len);
+
+    if (vsnprintf(disp_lines, sizeof(disp_lines), lines, argp) < 0)
+        return RES_NOK;
+
+    char *line_border = strstr(disp_lines, "\33") ;
+
+    if (!line_border)
+        return RES_NOK;
+
+    if ((uint32_t)(line_border - disp_lines) > LCD1602_LENGTH_LINE)
+        return RES_NOK;
+
+    if ((uint32_t)(&disp_lines[strlen(disp_lines) - 1] - line_border) > LCD1602_LENGTH_LINE)
+        return RES_NOK;
+
+    if (is_centered) {
+        pos = 0;
+        uint32_t border_pos = (uint32_t)(line_border - disp_lines);
+
+        for (uint8_t i = 0; i < LCD1602_NUM_LINE_MAX; i++) {
+            if (border_pos - pos) {
+                uint32_t shift_size = (LCD1602_LENGTH_LINE - (border_pos - pos)) / 2;
+
+                memmove(&disp_lines[pos + shift_size], &disp_lines[pos], strlen(disp_lines) - pos);
+                memset(&disp_lines[pos], ' ', shift_size);
+                border_pos += shift_size;
+
+                memmove(&disp_lines[border_pos + shift_size], &disp_lines[border_pos], strlen(disp_lines) - border_pos);
+                memset(&disp_lines[border_pos], ' ', shift_size);
+                border_pos += shift_size;
+            }
+
+            pos = border_pos + 1;
+            border_pos = strlen(disp_lines);
         }
     }
-
-    va_end(args);
 
     uint8_t res = bsp_lcd1602_display_clear();
 
     if (res != RES_OK)
         return res;
 
-    if (line1) {
-        res = bsp_lcd1602_ddram_address_set(0x0);
+    res = bsp_lcd1602_ddram_address_set(LCD1602_DDRAM_START_LINE1);
 
-        if (res != RES_OK)
-            return res;
+    if (res != RES_OK)
+        return res;
 
-        for (uint8_t i = 0; i < strlen(first_line); i++) {
-            __lcd1602_data_write((uint8_t)first_line[i]);
+    for (uint8_t i = 0; i < strlen(disp_lines); i++) {
+        if (disp_lines[i] == '\33') {
+            res = bsp_lcd1602_ddram_address_set(LCD1602_DDRAM_START_LINE2);
+
+            if (res != RES_OK)
+                return res;
+        } else {
+            __lcd1602_data_write((uint8_t)disp_lines[i]);
             __lcd1602_wait(WAIT_TMT);
         }
     }
 
-    if (line2) {
-        res = bsp_lcd1602_ddram_address_set(LCD1602_DDRAM_START_LINE2);
+    return res;
+}
 
-        if (res != RES_OK)
-            return res;
+uint8_t bsp_lcd1602_printf(const char *line1, const char *line2, ...)
+{
+    va_list argp;
+    va_start(argp, line2);
 
-        for (uint8_t i = 0; i < strlen(second_line); i++) {
-            __lcd1602_data_write((uint8_t)second_line[i]);
-            __lcd1602_wait(WAIT_TMT);
-        }
-    }
+    uint8_t res = __lcd1602_printf(line1, line2, false, argp);
+
+    va_end(argp);
+
+    return res;
+}
+
+uint8_t bsp_lcd1602_cprintf(const char *line1, const char *line2, ...)
+{
+    va_list argp;
+    va_start(argp, line2);
+
+    uint8_t res = __lcd1602_printf(line1, line2, true, argp);
+
+    va_end(argp);
 
     return res;
 }

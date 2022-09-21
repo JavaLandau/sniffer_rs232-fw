@@ -81,6 +81,7 @@ struct lcd1602_settings {
 
 uint8_t bsp_lcd1602_init(struct lcd1602_settings *settings);
 uint8_t bsp_lcd1602_printf(const char *line1, const char *line2, ...);
+uint8_t bsp_lcd1602_cprintf(const char *line1, const char *line2, ...);
 uint8_t bsp_lcd1602_ddram_address_set(const uint8_t address);
 uint8_t bsp_lcd1602_cgram_address_set(const uint8_t address);
 

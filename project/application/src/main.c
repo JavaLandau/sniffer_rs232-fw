@@ -61,19 +61,28 @@ int main()
     if (res != RES_OK)
         internal_error(LED_EVENT_LCD1602_ERROR);
 
-    bsp_lcd1602_printf("SNIFFER RS-232", "SNIFFER RS-232");
-
-    /*sniffer_rs232_init();
-
-    struct uart_init_ctx uart_params= {0};
-    res = sniffer_rs232_calc(RS232_CALC_TX, &uart_params);*/
-
     res = cli_init();
 
-    if (res != RES_OK)
+    if (res != RES_OK) {
+        bsp_lcd1602_cprintf("CLI ERROR", NULL);
         internal_error(LED_EVENT_COMMON_ERROR);
+    }
+
+    bsp_lcd1602_cprintf("CONFIGURATION", NULL);
 
     cli_menu_start(&config);
+
+    res = sniffer_rs232_init(&config.alg_config);
+
+    if (res != RES_OK) {
+        bsp_lcd1602_cprintf("ALG ERROR", NULL);
+        internal_error(LED_EVENT_COMMON_ERROR);
+    }
+
+    bsp_lcd1602_cprintf("ALG PROCESS...", NULL);
+
+    //struct uart_init_ctx uart_params = {0};
+    //uint8_t sniffer_rs232_calc(enum rs232_channel_type channel_type, &uart_params);
 
     return 0;
 }
