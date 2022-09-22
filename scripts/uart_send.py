@@ -16,6 +16,9 @@ class UARTSender:
     __input_active = True
     __send_active = True
     __send_stop = True
+    __ordered_mode = False
+    __ascii_bytes = None
+    __ascii_pos = 0
 
     LOG_RED = "\33[31m"
     LOG_GREY = "\33[37m"
@@ -23,6 +26,9 @@ class UARTSender:
     LOG_GREEN = "\33[32m"
     LOG_MAGENTA = "\33[35m"
     LOG_BLUE = "\33[34m"
+
+    __NUM_BYTES = 8
+    __DELAY = 1
 
     __is_debug_log_enabled = True
 
@@ -48,6 +54,10 @@ class UARTSender:
         self.__port_name = port_name
         self.__send_mutex = threading.Lock()
         self.__port = None
+        self.__ordered_mode = False
+        self.__ascii_bytes = [i for i in range(10)] + [i for i in range(ord('0'), ord(':'))] + \
+                            [i for i in range(ord('a'), ord('z'))] + [i for i in range(ord('A'), ord('Z'))]
+        self.__ascii_pos = 0
 
         random.seed()
 
@@ -111,8 +121,16 @@ class UARTSender:
         self.__send_mutex.acquire()
 
         if self.__port is not None and self.__port.is_open:
-            bytes = random.randbytes(8)
-            self.__port.write(bytes)
+            if not self.__ordered_mode:
+                _bytes = random.randbytes(self.__NUM_BYTES)
+            else:
+                _bytes = [0] * self.__NUM_BYTES
+                for i in range(self.__NUM_BYTES):
+                    _bytes[i] = self.__ascii_bytes[self.__ascii_pos]
+                    self.__ascii_pos += 1
+                    self.__ascii_pos = 0 if (self.__ascii_pos >= len(self.__ascii_bytes)) else self.__ascii_pos
+
+            self.__port.write(_bytes)
 
         self.__send_mutex.release()
 
@@ -121,7 +139,7 @@ class UARTSender:
             if not self.__send_stop:
                 self.__single_send()
 
-            time.sleep(0.01)
+            time.sleep(self.__DELAY)
 
         self.__send_active = True
 
@@ -146,6 +164,10 @@ class UARTSender:
             self.__send_stop = True
         elif data.find("finish") != -1:
             self.finish = True
+        elif data.find("rand") != -1:
+            self.__ordered_mode = False
+        elif data.find("ord") != -1:
+            self.__ordered_mode = True
         else:
             status = False
 

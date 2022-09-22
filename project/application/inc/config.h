@@ -5,6 +5,9 @@
 #include "stm32f4xx_hal.h"
 #include "sniffer_rs232.h"
 
+#define RS232_TRACE_TYPE_VALID(X)       ((X) < RS232_TRACE_MAX)
+#define RS232_INTERSPACE_TYPE_VALID(X)  ((X) < RS232_INTERSPCACE_MAX)
+
 enum rs232_trace_type {
     RS232_TRACE_HEX = 0,
     RS232_TRACE_HYBRID,

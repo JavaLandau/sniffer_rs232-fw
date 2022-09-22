@@ -5,7 +5,7 @@
 
 #define MENU_COLOR_SIZE                 10
 
-#define MENU_COLOR_RESET                "\33[37;40m"
+#define MENU_COLOR_RESET                "\33[0;37;40m"
 #define MENU_RETURN_HOME                "\33[H"
 #define MENU_LINE_UP                    "\33[A"
 #define MENU_LINE_DOWN                  "\33[B"
@@ -142,6 +142,7 @@ static uint8_t __menu_redraw(struct menu_item *prev_item_active, struct menu_ite
     snprintf(color_inactive, MENU_COLOR_SIZE, "\33[3%1d;4%1dm", color_cfg.inactive.foreground, color_cfg.inactive.background);
 
     menu_config.write_callback(MENU_RETURN_HOME);
+    menu_config.write_callback(MENU_COLOR_RESET);
 
     if (full_redraw) {
         menu_config.write_callback(MENU_SCREEN_ERASE);
@@ -483,6 +484,9 @@ uint8_t menu_start(struct menu_config *config, struct menu *menu)
                 __menu_redraw(prev_item, cur_item);
         }
     }
+
+    menu_config.write_callback(MENU_SCREEN_ERASE);
+    menu_config.write_callback(MENU_RETURN_HOME);
 
     return RES_OK;
 }

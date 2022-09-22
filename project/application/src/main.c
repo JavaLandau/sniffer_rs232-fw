@@ -11,9 +11,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-#define UART_RX_BUFF            256
-#define UART_TX_BUFF            256
-
+#define UART_RX_BUFF            (256)
 #define IS_UART_ERROR(X)        (uart_flags[X].error || uart_flags[X].overflow)
 
 static char uart_parity_sym[] = {'N', 'E', 'O'};
@@ -139,7 +137,6 @@ int main()
                                                      uart_params.wordlen, uart_parity_sym[uart_params.parity], 
                                                      uart_params.stopbits);
 
-        uart_params.tx_size = UART_TX_BUFF;
         uart_params.rx_size = UART_RX_BUFF;
         uart_params.overflow_isr_cb = uart_overflow_cb;
         uart_params.error_isr_cb = uart_error_cb;
@@ -160,12 +157,27 @@ int main()
 
         bool error_displayed = false;
         enum uart_type uart_type = BSP_UART_TYPE_RS232_TX;
+        enum uart_type prev_uart_type = uart_type;
         uint8_t rx_buff[UART_RX_BUFF] = {0};
         uint16_t rx_len = 0;
 
         while (true) {
             if (bsp_uart_read(uart_type, rx_buff, &rx_len, 0) == RES_OK) {
+                if (uart_type != prev_uart_type) {
+                    if (config.txrx_delimiter == RS232_INTERSPCACE_SPACE)
+                        cli_trace(" ");
+                    else if (config.txrx_delimiter == RS232_INTERSPCACE_NEW_LINE)
+                        cli_trace("\r\n");
 
+                    prev_uart_type = uart_type;
+                } else {
+                    if (config.idle_presence == RS232_INTERSPCACE_SPACE)
+                        cli_trace(" ");
+                    else if (config.idle_presence == RS232_INTERSPCACE_NEW_LINE)
+                        cli_trace("\r\n");
+                }
+
+                cli_rs232_trace(uart_type, config.trace_type, rx_buff, rx_len);
             }
 
             if (!error_displayed) {
@@ -174,14 +186,14 @@ int main()
                 char err_rx_str[3] = {0};
 
                 if (uart_flags[BSP_UART_TYPE_RS232_TX].overflow)
-                    sprintf(err_tx_str, "OF");
+                    snprintf(err_tx_str, sizeof(err_tx_str), "OF");
                 else if (uart_flags[BSP_UART_TYPE_RS232_TX].error)
-                    sprintf(err_tx_str, "%u", uart_flags[BSP_UART_TYPE_RS232_TX].error);
+                    snprintf(err_tx_str, sizeof(err_tx_str), "%u", uart_flags[BSP_UART_TYPE_RS232_TX].error);
 
                 if (uart_flags[BSP_UART_TYPE_RS232_RX].overflow)
-                    sprintf(err_rx_str, "OF");
+                    snprintf(err_rx_str, sizeof(err_rx_str), "OF");
                 else if (uart_flags[BSP_UART_TYPE_RS232_RX].error)
-                    sprintf(err_rx_str, "%u", uart_flags[BSP_UART_TYPE_RS232_RX].error);
+                    snprintf(err_rx_str, sizeof(err_rx_str), "%u", uart_flags[BSP_UART_TYPE_RS232_RX].error);
 
                 if (IS_UART_ERROR(BSP_UART_TYPE_RS232_TX) && IS_UART_ERROR(BSP_UART_TYPE_RS232_RX)) {
                     bsp_lcd1602_cprintf(NULL, "%s%s ERR %s/%s", display_uart_type_str[BSP_UART_TYPE_RS232_TX],

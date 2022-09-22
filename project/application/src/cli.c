@@ -9,7 +9,12 @@
 #include <stdarg.h>
 #include <ctype.h>
 
-#define UART_BUFF_SIZE     256
+#define UART_TRACE_BUFF_SIZE    (256)
+#define UART_RX_BUFF_SIZE       (256)
+#define UART_TX_BUFF_SIZE       (6 * UART_RX_BUFF_SIZE)
+
+#define TX_COLOR           MENU_COLOR_GREEN
+#define RX_COLOR           MENU_COLOR_MAGENTA
 
 static struct {
     bool uart_error;
@@ -145,23 +150,23 @@ static char *__cli_prompt_generator(const char *menu_item_label)
     uint32_t min = 0, max = 0;
     static char prompt[64] = {0};
 
-    if (!strncmp("Valid packets", menu_item_label, UART_BUFF_SIZE)) {
+    if (!strncmp("Valid packets", menu_item_label, UART_RX_BUFF_SIZE)) {
         snprintf(prompt, sizeof(prompt), "Valid packets count: ");
-    } else if (!strncmp("UART errors", menu_item_label, UART_BUFF_SIZE)) {
+    } else if (!strncmp("UART errors", menu_item_label, UART_RX_BUFF_SIZE)) {
         snprintf(prompt, sizeof(prompt), "UART errors count: ");
-    } else if (!strncmp("Tolerance", menu_item_label, UART_BUFF_SIZE)) {
+    } else if (!strncmp("Tolerance", menu_item_label, UART_RX_BUFF_SIZE)) {
         min = SNIFFER_RS232_CFG_PARAM_MIN(baudrate_tolerance);
         max = SNIFFER_RS232_CFG_PARAM_MAX(baudrate_tolerance);
         snprintf(prompt, sizeof(prompt), "Tolerance [%u-%u %%]: ", min, max);
-    } else if (!strncmp("Minimum bits", menu_item_label, UART_BUFF_SIZE)) {
+    } else if (!strncmp("Minimum bits", menu_item_label, UART_RX_BUFF_SIZE)) {
         min = SNIFFER_RS232_CFG_PARAM_MIN(min_detect_bits);
         max = SNIFFER_RS232_CFG_PARAM_MAX(min_detect_bits);
         snprintf(prompt, sizeof(prompt), "Minimum bits count [%u-%u]: ", min, max);
-    } else if (!strncmp("Timeout", menu_item_label, UART_BUFF_SIZE)) {
+    } else if (!strncmp("Timeout", menu_item_label, UART_RX_BUFF_SIZE)) {
         snprintf(prompt, sizeof(prompt), "Timeout [sec]: ");
-    } else if (!strncmp("Attempts", menu_item_label, UART_BUFF_SIZE)) {
+    } else if (!strncmp("Attempts", menu_item_label, UART_RX_BUFF_SIZE)) {
         snprintf(prompt, sizeof(prompt), "Attempts: ");
-    } else if (!strncmp("Baudrate", menu_item_label, UART_BUFF_SIZE)) {
+    } else if (!strncmp("Baudrate", menu_item_label, UART_RX_BUFF_SIZE)) {
         snprintf(prompt, sizeof(prompt), "Baudrate [bps]: ");
     } else {
         return NULL;
@@ -388,7 +393,7 @@ static uint8_t __cli_menu_write_cb(char *data)
     if (!data)
         return RES_INVALID_PAR;
 
-    if (strnlen(data, UART_BUFF_SIZE) == UART_BUFF_SIZE)
+    if (strnlen(data, UART_RX_BUFF_SIZE) == UART_RX_BUFF_SIZE)
         return RES_INVALID_PAR;
 
     return bsp_uart_write(BSP_UART_TYPE_CLI, (uint8_t*)data, strlen(data), 1000);
@@ -414,7 +419,7 @@ uint8_t cli_init(void)
 {
     memset(&cli_state, 0, sizeof(cli_state));
 
-    __menu_rx_buff = (uint8_t*)malloc(UART_BUFF_SIZE + 1);
+    __menu_rx_buff = (uint8_t*)malloc(UART_RX_BUFF_SIZE + 1);
 
     if (!__menu_rx_buff)
         return RES_MEMORY_ERR;
@@ -424,8 +429,8 @@ uint8_t cli_init(void)
     uart_init.wordlen = BSP_UART_WORDLEN_8;
     uart_init.parity = BSP_UART_PARITY_NONE;
     uart_init.stopbits = BSP_UART_STOPBITS_1;
-    uart_init.rx_size = UART_BUFF_SIZE;
-    uart_init.tx_size = UART_BUFF_SIZE;
+    uart_init.rx_size = UART_RX_BUFF_SIZE;
+    uart_init.tx_size = UART_TX_BUFF_SIZE;
     uart_init.params = NULL;
     uart_init.error_isr_cb = __cli_uart_error_cb;
     uart_init.overflow_isr_cb = __cli_uart_overflow_cb;
@@ -436,12 +441,12 @@ uint8_t cli_init(void)
 
 void cli_trace(const char *format, ...)
 {
-    static char buffer[UART_BUFF_SIZE] = {0};
+    static char buffer[UART_TRACE_BUFF_SIZE] = {0};
 
     va_list args;
     va_start(args, format);
 
-    uint32_t len = vsnprintf(buffer, UART_BUFF_SIZE - 1, format, args);
+    uint32_t len = vsnprintf(buffer, UART_TRACE_BUFF_SIZE - 1, format, args);
 
     if (len > 0)
         bsp_uart_write(BSP_UART_TYPE_CLI, (uint8_t*)buffer, len, 1000);
@@ -508,4 +513,40 @@ uint8_t cli_menu_start(struct flash_config *config)
     menu_all_destroy();
 
     return RES_OK;
+}
+
+uint8_t cli_rs232_trace(enum uart_type uart_type, enum rs232_trace_type trace_type, uint8_t *data, uint32_t len)
+{
+    if (!data || !len)
+        return RES_INVALID_PAR;
+
+    if (!RS232_TRACE_TYPE_VALID(trace_type))
+        return RES_INVALID_PAR;
+
+    if (uart_type != BSP_UART_TYPE_RS232_TX && uart_type != BSP_UART_TYPE_RS232_RX)
+        return RES_INVALID_PAR;
+
+    uint32_t total_len = 0;
+    uint8_t tx_buff[UART_TRACE_BUFF_SIZE] = {0};
+    bool is_prev_hex = false;
+    bool first_byte = true;
+
+    for (uint32_t i = 0; i < len; i++) {
+        bool is_hex = (trace_type == RS232_TRACE_HEX) || !IS_PRINTABLE(data[i]);
+        if ((is_hex != is_prev_hex) || first_byte) {
+            total_len += snprintf((char*)&tx_buff[total_len], UART_TRACE_BUFF_SIZE, "\33[%1u;3%1um", 
+                                    is_hex ? 1 : 0, (uart_type == BSP_UART_TYPE_RS232_TX) ? TX_COLOR : RX_COLOR);
+            is_prev_hex = is_hex;
+            first_byte = false;
+        }
+
+        if (is_hex)
+            total_len += snprintf((char*)&tx_buff[total_len], UART_TRACE_BUFF_SIZE, "\\%02X", data[i]);
+        else
+            total_len += snprintf((char*)&tx_buff[total_len], UART_TRACE_BUFF_SIZE, "%c", data[i]);
+    }
+
+    uint8_t res = bsp_uart_write(BSP_UART_TYPE_CLI, tx_buff, total_len, 1000);
+
+    return res;
 }
