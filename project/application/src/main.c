@@ -10,6 +10,29 @@
 #include "cli.h"
 #include <stdbool.h>
 
+static char uart_parity_sym[] = {'N', 'E', 'O'};
+static struct {
+    uint32_t error;
+    bool overflow;
+} uart_flags[BSP_UART_TYPE_MAX] = {0};
+
+static void uart_overflow_cb(enum uart_type type, void *params)
+{
+    if (!UART_TYPE_VALID(type))
+        return;
+
+    uart_flags[type].overflow = true;
+}
+
+static void uart_error_cb(enum uart_type type, uint32_t error, void *params)
+{
+    if (!UART_TYPE_VALID(type))
+        return;
+
+    uart_flags[type].error = error;
+    bsp_uart_start(type);
+}
+
 static void internal_error(enum led_event led_event)
 {
     app_led_set(led_event);
@@ -70,19 +93,50 @@ int main()
 
     bsp_lcd1602_cprintf("CONFIGURATION", NULL);
 
-    cli_menu_start(&config);
-
-    res = sniffer_rs232_init(&config.alg_config);
+    res = cli_menu_start(&config);
 
     if (res != RES_OK) {
-        bsp_lcd1602_cprintf("ALG ERROR", NULL);
+        bsp_lcd1602_cprintf("MENU ERROR", NULL);
         internal_error(LED_EVENT_COMMON_ERROR);
     }
 
-    bsp_lcd1602_cprintf("ALG PROCESS...", NULL);
+    struct uart_init_ctx uart_params = {0};
 
-    //struct uart_init_ctx uart_params = {0};
-    //uint8_t sniffer_rs232_calc(enum rs232_channel_type channel_type, &uart_params);
+    if (!config.presettings.enable) {
+        res = sniffer_rs232_init(&config.alg_config);
+
+        if (res != RES_OK) {
+            bsp_lcd1602_cprintf("ALG ERROR", NULL);
+            internal_error(LED_EVENT_COMMON_ERROR);
+        }
+
+        app_led_set(LED_EVENT_IN_PROCESS);
+        bsp_lcd1602_cprintf("ALG PROCESS...", NULL);
+
+        res = sniffer_rs232_calc(&uart_params);
+    } else {
+        uart_params.baudrate = config.presettings.baudrate;
+        uart_params.wordlen = config.presettings.wordlen;
+        uart_params.parity = config.presettings.parity;
+        uart_params.stopbits = config.presettings.stopbits;
+    }
+
+    if (res == RES_OK) {
+        app_led_set(LED_EVENT_SUCCESS);
+        bsp_lcd1602_cprintf("%c: %u,%1u%c%1u", NULL, config.presettings.enable ? 'P' : 'S', uart_params.baudrate,
+                                                     uart_params.wordlen, uart_parity_sym[uart_params.parity], 
+                                                     uart_params.stopbits);
+
+        uart_params.tx_size = 256;
+        uart_params.rx_size = 256;
+        uart_params.overflow_isr_cb = uart_overflow_cb;
+        uart_params.error_isr_cb = uart_error_cb;
+
+        //res = bsp_uart_init(type, &uart_params);
+    } else {
+        app_led_set(LED_EVENT_FAILED);
+        bsp_lcd1602_cprintf("ALG FAILED", NULL);
+    }
 
     return 0;
 }

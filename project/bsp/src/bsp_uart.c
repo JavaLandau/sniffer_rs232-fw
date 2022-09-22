@@ -393,7 +393,7 @@ static void __uart_error_callback(enum uart_type type)
 
     if (type != BSP_UART_TYPE_MAX) {
         if (uart_obj[type].ctx && uart_obj[type].ctx->init.error_isr_cb)
-            uart_obj[type].ctx->init.error_isr_cb(type, uart_obj[type].uart.ErrorCode, uart_obj[type].ctx->init.params);
+            uart_obj[type].ctx->init.error_isr_cb(type, uart_obj[type].uart.ErrorCode & BSP_UART_ERRORS_ALL, uart_obj[type].ctx->init.params);
     }
 }
 

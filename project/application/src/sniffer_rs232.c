@@ -157,7 +157,7 @@ static void __sniffer_rs232_line_baudrate_calc(struct baud_calc_ctx *ctx)
     ctx->done = (ctx->idx >= (4 * config.min_detect_bits));
 }
 
-uint8_t __sniffer_rs232_baudrate_calc(enum rs232_channel_type channel_type, uint32_t *baudrate)
+static uint8_t __sniffer_rs232_baudrate_calc(enum rs232_channel_type channel_type, uint32_t *baudrate)
 {
     if (!baudrate || !RS232_CHANNEL_TYPE_VALID(channel_type))
         return RES_INVALID_PAR;
@@ -257,13 +257,13 @@ uint8_t __sniffer_rs232_baudrate_calc(enum rs232_channel_type channel_type, uint
     return res;
 }
 
-void __sniffer_rs232_uart_overflow_cb(enum uart_type type, void *params)
+static void __sniffer_rs232_uart_overflow_cb(enum uart_type type, void *params)
 {
     struct hyp_check_ctx *check_ctx = (struct hyp_check_ctx*)params;
     check_ctx->overflow = true;
 }
 
-void __sniffer_rs232_uart_error_cb(enum uart_type type, uint32_t error, void *params)
+static void __sniffer_rs232_uart_error_cb(enum uart_type type, uint32_t error, void *params)
 {
     struct hyp_check_ctx *check_ctx = (struct hyp_check_ctx*)params;
 
@@ -276,7 +276,7 @@ void __sniffer_rs232_uart_error_cb(enum uart_type type, uint32_t error, void *pa
     bsp_uart_start(type);
 }
 
-uint8_t __sniffer_rs232_params_calc(enum rs232_channel_type channel_type, uint32_t baudrate, int8_t *hyp_num)
+static uint8_t __sniffer_rs232_params_calc(enum rs232_channel_type channel_type, uint32_t baudrate, int8_t *hyp_num)
 {
     if (!baudrate || !RS232_CHANNEL_TYPE_VALID(channel_type) || !hyp_num)
         return RES_INVALID_PAR;
@@ -296,6 +296,7 @@ uint8_t __sniffer_rs232_params_calc(enum rs232_channel_type channel_type, uint32
         init_ctx.rx_size = UART_BUFF_SIZE;
         init_ctx.stopbits = BSP_UART_STOPBITS_1;
         init_ctx.error_isr_cb = __sniffer_rs232_uart_error_cb;
+        init_ctx.overflow_isr_cb = __sniffer_rs232_uart_overflow_cb;
 
         if (channel_type != RS232_CHANNEL_RX) {
             memset(&tx_check_ctx, 0, sizeof(tx_check_ctx));

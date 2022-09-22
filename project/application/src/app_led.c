@@ -73,6 +73,11 @@ uint8_t app_led_set(enum led_event led_event)
         bsp_led_rgb_set(&led_magenta);
         break;
 
+    case LED_EVENT_UART_ERROR:
+        bsp_led_rgb_blink_enable(&blink_fast);
+        bsp_led_rgb_set(&led_yellow);
+        break;
+
     case LED_EVENT_UART_OVERFLOW:
         bsp_led_rgb_blink_disable();
         bsp_led_rgb_set(&led_yellow);
