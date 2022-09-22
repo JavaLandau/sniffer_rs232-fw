@@ -477,18 +477,27 @@ uint8_t __lcd1602_printf(const char *line1, const char *line2, bool is_centered,
         }
     }
 
-    uint8_t res = bsp_lcd1602_display_clear();
+    uint8_t res = bsp_lcd1602_ddram_address_set(LCD1602_DDRAM_START_LINE1);
 
     if (res != RES_OK)
         return res;
 
-    res = bsp_lcd1602_ddram_address_set(LCD1602_DDRAM_START_LINE1);
+    pos = 0;
+    for (uint8_t i = 0; ; i++) {
+        if (disp_lines[i] == '\33' || !disp_lines[i]) {
+            const char *line = disp_lines[i] ? line1 : line2;
 
-    if (res != RES_OK)
-        return res;
+            if (line) {
+                for (uint8_t j = 0; j < (LCD1602_LENGTH_LINE - (i - pos)); j++) {
+                    __lcd1602_data_write(' ');
+                    __lcd1602_wait(WAIT_TMT);
+                }
+            }
+            pos = i + 1;
 
-    for (uint8_t i = 0; i < strlen(disp_lines); i++) {
-        if (disp_lines[i] == '\33') {
+            if (!disp_lines[i])
+                break;
+
             res = bsp_lcd1602_ddram_address_set(LCD1602_DDRAM_START_LINE2);
 
             if (res != RES_OK)

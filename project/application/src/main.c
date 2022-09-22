@@ -9,8 +9,17 @@
 #include "config.h"
 #include "cli.h"
 #include <stdbool.h>
+#include <stdio.h>
+
+#define UART_RX_BUFF            256
+#define UART_TX_BUFF            256
+
+#define IS_UART_ERROR(X)        (uart_flags[X].error || uart_flags[X].overflow)
 
 static char uart_parity_sym[] = {'N', 'E', 'O'};
+
+static char *display_uart_type_str[] = {"CLI", "TX", "RX"};
+
 static struct {
     uint32_t error;
     bool overflow;
@@ -87,7 +96,7 @@ int main()
     res = cli_init();
 
     if (res != RES_OK) {
-        bsp_lcd1602_cprintf("CLI ERROR", NULL);
+        bsp_lcd1602_cprintf("CLI ERR %u", NULL, res);
         internal_error(LED_EVENT_COMMON_ERROR);
     }
 
@@ -96,7 +105,7 @@ int main()
     res = cli_menu_start(&config);
 
     if (res != RES_OK) {
-        bsp_lcd1602_cprintf("MENU ERROR", NULL);
+        bsp_lcd1602_cprintf("MENU ERR %u", NULL, res);
         internal_error(LED_EVENT_COMMON_ERROR);
     }
 
@@ -106,7 +115,7 @@ int main()
         res = sniffer_rs232_init(&config.alg_config);
 
         if (res != RES_OK) {
-            bsp_lcd1602_cprintf("ALG ERROR", NULL);
+            bsp_lcd1602_cprintf("ALG INIT ERR %u", NULL, res);
             internal_error(LED_EVENT_COMMON_ERROR);
         }
 
@@ -114,6 +123,9 @@ int main()
         bsp_lcd1602_cprintf("ALG PROCESS...", NULL);
 
         res = sniffer_rs232_calc(&uart_params);
+
+        if (res != RES_OK)
+            bsp_lcd1602_cprintf("ALG ERR %u", NULL, res);
     } else {
         uart_params.baudrate = config.presettings.baudrate;
         uart_params.wordlen = config.presettings.wordlen;
@@ -121,18 +133,80 @@ int main()
         uart_params.stopbits = config.presettings.stopbits;
     }
 
-    if (res == RES_OK) {
+    if (res == RES_OK && uart_params.baudrate) {
         app_led_set(LED_EVENT_SUCCESS);
         bsp_lcd1602_cprintf("%c: %u,%1u%c%1u", NULL, config.presettings.enable ? 'P' : 'S', uart_params.baudrate,
                                                      uart_params.wordlen, uart_parity_sym[uart_params.parity], 
                                                      uart_params.stopbits);
 
-        uart_params.tx_size = 256;
-        uart_params.rx_size = 256;
+        uart_params.tx_size = UART_TX_BUFF;
+        uart_params.rx_size = UART_RX_BUFF;
         uart_params.overflow_isr_cb = uart_overflow_cb;
         uart_params.error_isr_cb = uart_error_cb;
 
-        //res = bsp_uart_init(type, &uart_params);
+        res = bsp_uart_init(BSP_UART_TYPE_RS232_TX, &uart_params);
+
+        if (res != RES_OK) {
+            bsp_lcd1602_cprintf("%s INIT ERR %u", NULL, display_uart_type_str[BSP_UART_TYPE_RS232_TX], res);
+            internal_error(LED_EVENT_COMMON_ERROR);
+        }
+
+        res = bsp_uart_init(BSP_UART_TYPE_RS232_RX, &uart_params);
+
+        if (res != RES_OK) {
+            bsp_lcd1602_cprintf("%s INIT ERR %u", NULL, display_uart_type_str[BSP_UART_TYPE_RS232_RX], res);
+            internal_error(LED_EVENT_COMMON_ERROR);
+        }
+
+        bool error_displayed = false;
+        enum uart_type uart_type = BSP_UART_TYPE_RS232_TX;
+        uint8_t rx_buff[UART_RX_BUFF] = {0};
+        uint16_t rx_len = 0;
+
+        while (true) {
+            if (bsp_uart_read(uart_type, rx_buff, &rx_len, 0) == RES_OK) {
+
+            }
+
+            if (!error_displayed) {
+                error_displayed = true;
+                char err_tx_str[3] = {0};
+                char err_rx_str[3] = {0};
+
+                if (uart_flags[BSP_UART_TYPE_RS232_TX].overflow)
+                    sprintf(err_tx_str, "OF");
+                else if (uart_flags[BSP_UART_TYPE_RS232_TX].error)
+                    sprintf(err_tx_str, "%u", uart_flags[BSP_UART_TYPE_RS232_TX].error);
+
+                if (uart_flags[BSP_UART_TYPE_RS232_RX].overflow)
+                    sprintf(err_rx_str, "OF");
+                else if (uart_flags[BSP_UART_TYPE_RS232_RX].error)
+                    sprintf(err_rx_str, "%u", uart_flags[BSP_UART_TYPE_RS232_RX].error);
+
+                if (IS_UART_ERROR(BSP_UART_TYPE_RS232_TX) && IS_UART_ERROR(BSP_UART_TYPE_RS232_RX)) {
+                    bsp_lcd1602_cprintf(NULL, "%s%s ERR %s/%s", display_uart_type_str[BSP_UART_TYPE_RS232_TX],
+                                                                display_uart_type_str[BSP_UART_TYPE_RS232_RX],
+                                                                err_tx_str, err_rx_str);
+                } else if (IS_UART_ERROR(BSP_UART_TYPE_RS232_TX) || IS_UART_ERROR(BSP_UART_TYPE_RS232_RX)) {
+                    enum uart_type err_uart_type = IS_UART_ERROR(BSP_UART_TYPE_RS232_TX) ? BSP_UART_TYPE_RS232_TX : BSP_UART_TYPE_RS232_RX;
+
+                    bsp_lcd1602_cprintf(NULL, "%s ERR %s", display_uart_type_str[err_uart_type], 
+                                                           (err_uart_type == BSP_UART_TYPE_RS232_TX) ? err_tx_str : err_rx_str);
+                } else {
+                    error_displayed = false;
+                }
+
+                if (error_displayed) {
+                    if (uart_flags[BSP_UART_TYPE_RS232_TX].overflow || uart_flags[BSP_UART_TYPE_RS232_RX].overflow)
+                        app_led_set(LED_EVENT_UART_OVERFLOW);
+                    else
+                        app_led_set(LED_EVENT_UART_ERROR);
+                }
+            }
+
+            uart_type = (uart_type == BSP_UART_TYPE_RS232_TX) ? BSP_UART_TYPE_RS232_RX : BSP_UART_TYPE_RS232_TX;
+        }
+
     } else {
         app_led_set(LED_EVENT_FAILED);
         bsp_lcd1602_cprintf("ALG FAILED", NULL);
