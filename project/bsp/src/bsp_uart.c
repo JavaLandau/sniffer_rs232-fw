@@ -428,6 +428,9 @@ uint8_t bsp_uart_write(enum uart_type type, uint8_t *data, uint16_t len, uint32_
     if (!data || !len)
         return RES_INVALID_PAR;
 
+    if (len > uart_obj[type].ctx->init.tx_size)
+        return RES_INVALID_PAR;
+
     uint8_t res = RES_TIMEOUT;
     uint32_t start_time = HAL_GetTick();
     while((HAL_GetTick() - start_time) < tmt_ms) {
@@ -441,7 +444,9 @@ uint8_t bsp_uart_write(enum uart_type type, uint8_t *data, uint16_t len, uint32_
     if (res != RES_OK)
         HAL_UART_AbortTransmit(&uart_obj[type].uart);
 
-    HAL_StatusTypeDef hal_res = HAL_UART_Transmit_DMA(&uart_obj[type].uart, data, len);
+    memcpy(uart_obj[type].ctx->tx_buff, data, len);
+
+    HAL_StatusTypeDef hal_res = HAL_UART_Transmit_DMA(&uart_obj[type].uart, uart_obj[type].ctx->tx_buff, len);
 
     if (hal_res != HAL_OK)
         return RES_NOK;

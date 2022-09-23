@@ -527,23 +527,23 @@ uint8_t cli_rs232_trace(enum uart_type uart_type, enum rs232_trace_type trace_ty
         return RES_INVALID_PAR;
 
     uint32_t total_len = 0;
-    uint8_t tx_buff[UART_TRACE_BUFF_SIZE] = {0};
+    uint8_t tx_buff[UART_TX_BUFF_SIZE] = {0};
     bool is_prev_hex = false;
     bool first_byte = true;
 
     for (uint32_t i = 0; i < len; i++) {
         bool is_hex = (trace_type == RS232_TRACE_HEX) || !IS_PRINTABLE(data[i]);
         if ((is_hex != is_prev_hex) || first_byte) {
-            total_len += snprintf((char*)&tx_buff[total_len], UART_TRACE_BUFF_SIZE, "\33[%1u;3%1um", 
+            total_len += snprintf((char*)&tx_buff[total_len], UART_TX_BUFF_SIZE, "\33[%1u;3%1um", 
                                     is_hex ? 1 : 0, (uart_type == BSP_UART_TYPE_RS232_TX) ? TX_COLOR : RX_COLOR);
             is_prev_hex = is_hex;
             first_byte = false;
         }
 
         if (is_hex)
-            total_len += snprintf((char*)&tx_buff[total_len], UART_TRACE_BUFF_SIZE, "\\%02X", data[i]);
+            total_len += snprintf((char*)&tx_buff[total_len], UART_TX_BUFF_SIZE, "\\%02X", data[i]);
         else
-            total_len += snprintf((char*)&tx_buff[total_len], UART_TRACE_BUFF_SIZE, "%c", data[i]);
+            total_len += snprintf((char*)&tx_buff[total_len], UART_TX_BUFF_SIZE, "%c", data[i]);
     }
 
     uint8_t res = bsp_uart_write(BSP_UART_TYPE_CLI, tx_buff, total_len, 1000);
