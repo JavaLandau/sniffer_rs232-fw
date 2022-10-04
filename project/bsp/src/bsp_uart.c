@@ -403,6 +403,9 @@ uint8_t bsp_uart_start(enum uart_type type)
         return RES_INVALID_PAR;
 
     if (uart_obj[type].ctx && uart_obj[type].ctx->rx_buff) {
+        uart_obj[type].ctx->rx_idx_get = 0;
+        uart_obj[type].ctx->rx_idx_set = 0;
+
         if (HAL_UARTEx_ReceiveToIdle_DMA(&uart_obj[type].uart, uart_obj[type].ctx->rx_buff, uart_obj[type].ctx->init.rx_size) != HAL_OK)
             return RES_NOK;
     }
@@ -530,9 +533,6 @@ uint8_t bsp_uart_init(enum uart_type type, struct uart_init_ctx *init)
 
             if (res != RES_OK)
                 return res;
-
-            uart_obj[type].ctx->rx_idx_get = 0;
-            uart_obj[type].ctx->rx_idx_set = 0;
         }
 
         uint32_t rx_size = init->rx_size;
@@ -598,14 +598,11 @@ uint8_t bsp_uart_init(enum uart_type type, struct uart_init_ctx *init)
             break;
         }
 
-        if (uart_obj[type].ctx->rx_buff) {
-            hal_res = HAL_UARTEx_ReceiveToIdle_DMA(&uart_obj[type].uart, uart_obj[type].ctx->rx_buff, uart_obj[type].ctx->init.rx_size);
+        res = bsp_uart_start(type);
 
-            if (hal_res != HAL_OK) {
-                res = RES_NOK;
-                break;
-            }
-        }
+        if (res != RES_OK)
+            break;
+
     } while(0);
 
     if (res != RES_OK) {
