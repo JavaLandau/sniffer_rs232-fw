@@ -5,6 +5,7 @@
 #include "bsp_lcd1602.h"
 #include "bsp_uart.h"
 #include "bsp_crc.h"
+#include "bsp_button.h"
 #include "sniffer_rs232.h"
 #include "config.h"
 #include "cli.h"
@@ -38,6 +39,11 @@ static void uart_error_cb(enum uart_type type, uint32_t error, void *params)
 
     uart_flags[type].error = error;
     bsp_uart_start(type);
+}
+
+static void button_cb(enum button_action action)
+{
+
 }
 
 static void internal_error(enum led_event led_event)
@@ -90,6 +96,19 @@ int main()
 
     if (res != RES_OK)
         internal_error(LED_EVENT_LCD1602_ERROR);
+
+    struct button_init_ctx button_init_ctx = {
+        .press_delay_ms = 100,
+        .press_timeout_ms = 250,
+        .button_isr_cb = button_cb,
+    };
+
+    res = bsp_button_init(&button_init_ctx);
+
+    if (res != RES_OK) {
+        bsp_lcd1602_cprintf("BUTTON ERR %u", NULL, res);
+        internal_error(LED_EVENT_COMMON_ERROR);
+    }
 
     res = cli_init();
 

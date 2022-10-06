@@ -2866,6 +2866,9 @@
     <group>
         <name>bsp</name>
         <file>
+            <name>$PROJ_DIR$\..\bsp\src\bsp_button.c</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\bsp\src\bsp_crc.c</name>
         </file>
         <file>

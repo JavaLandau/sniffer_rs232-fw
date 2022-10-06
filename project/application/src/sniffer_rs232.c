@@ -481,7 +481,7 @@ uint8_t sniffer_rs232_init(struct sniffer_rs232_config *__config)
     /* EXTI configuration */
     EXTI_ConfigTypeDef exti_config = {0};
 
-    exti_config.Line            = hexti1.Line; 
+    exti_config.Line            = hexti1.Line;
     exti_config.Mode            = EXTI_MODE_INTERRUPT;
     exti_config.Trigger         = EXTI_TRIGGER_RISING_FALLING;
     exti_config.GPIOSel         = EXTI_GPIOA;
