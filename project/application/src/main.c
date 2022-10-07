@@ -11,13 +11,15 @@
 #include "cli.h"
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
 
 #define UART_RX_BUFF            (256)
 #define IS_UART_ERROR(X)        (uart_flags[X].error || uart_flags[X].overflow)
 
 static char uart_parity_sym[] = {'N', 'E', 'O'};
-
 static char *display_uart_type_str[] = {"CLI", "TX", "RX"};
+
+static bool press_event = false;
 
 static struct {
     uint32_t error;
@@ -43,7 +45,36 @@ static void uart_error_cb(enum uart_type type, uint32_t error, void *params)
 
 static void button_cb(enum button_action action)
 {
+    switch(action) {
+    case BUTTON_PRESSED:
+        if (!cli_menu_is_started())
+            press_event = true;
+        else
+            cli_menu_exit();
+        break;
 
+    case BUTTON_LONG_PRESSED:
+        HAL_NVIC_SystemReset();
+
+    default:
+        break;
+    }
+}
+
+static bool button_wait_event(uint32_t tmt)
+{
+    bool __press_event = false;
+    uint32_t tick_start = HAL_GetTick();
+
+    do {
+        if (press_event) {
+            __press_event = true;
+            press_event = false;
+            break;
+        }
+    } while((HAL_GetTick() - tick_start) < tmt);
+
+    return __press_event;
 }
 
 static void internal_error(enum led_event led_event)
@@ -98,8 +129,9 @@ int main()
         internal_error(LED_EVENT_LCD1602_ERROR);
 
     struct button_init_ctx button_init_ctx = {
-        .press_delay_ms = 100,
-        .press_timeout_ms = 250,
+        .press_delay_ms = 500,
+        .press_min_dur_ms = 70,
+        .long_press_dur_ms = 1000,
         .button_isr_cb = button_cb,
     };
 
@@ -126,8 +158,6 @@ int main()
         internal_error(LED_EVENT_COMMON_ERROR);
     }
 
-    struct uart_init_ctx uart_params = {0};
-
     if (!config.presettings.enable) {
         res = sniffer_rs232_init(&config.alg_config);
 
@@ -135,22 +165,37 @@ int main()
             bsp_lcd1602_cprintf("ALG INIT ERR %u", NULL, res);
             internal_error(LED_EVENT_COMMON_ERROR);
         }
-
-        app_led_set(LED_EVENT_IN_PROCESS);
-        bsp_lcd1602_cprintf("ALG PROCESS...", NULL);
-
-        res = sniffer_rs232_calc(&uart_params);
-
-        if (res != RES_OK)
-            bsp_lcd1602_cprintf("ALG ERR %u", NULL, res);
-    } else {
-        uart_params.baudrate = config.presettings.baudrate;
-        uart_params.wordlen = config.presettings.wordlen;
-        uart_params.parity = config.presettings.parity;
-        uart_params.stopbits = config.presettings.stopbits;
     }
 
-    if (res == RES_OK && uart_params.baudrate) {
+    struct uart_init_ctx uart_params = {0};
+
+    while (!uart_params.baudrate) {
+        if (!config.presettings.enable) {
+            app_led_set(LED_EVENT_IN_PROCESS);
+            bsp_lcd1602_cprintf("ALG PROCESS...", NULL);
+
+            res = sniffer_rs232_calc(&uart_params);
+
+            if (res != RES_OK) {
+                bsp_lcd1602_cprintf("ALG ERR %u", NULL, res);
+                internal_error(LED_EVENT_COMMON_ERROR);
+            }
+        } else {
+            uart_params.baudrate = config.presettings.baudrate;
+            uart_params.wordlen = config.presettings.wordlen;
+            uart_params.parity = config.presettings.parity;
+            uart_params.stopbits = config.presettings.stopbits;
+        }
+
+        if (!uart_params.baudrate) {
+            app_led_set(LED_EVENT_FAILED);
+            bsp_lcd1602_cprintf("ALG FAILED", NULL);
+
+            while(!button_wait_event(0));
+        }
+    }
+
+    if (uart_params.baudrate) {
         app_led_set(LED_EVENT_SUCCESS);
         bsp_lcd1602_cprintf("%c: %u,%1u%c%1u", NULL, config.presettings.enable ? 'P' : 'S', uart_params.baudrate,
                                                      uart_params.wordlen, uart_parity_sym[uart_params.parity], 
@@ -174,13 +219,37 @@ int main()
             internal_error(LED_EVENT_COMMON_ERROR);
         }
 
+
         bool error_displayed = false;
         enum uart_type uart_type = BSP_UART_TYPE_RS232_TX;
         enum uart_type prev_uart_type = uart_type;
         uint8_t rx_buff[UART_RX_BUFF] = {0};
         uint16_t rx_len = 0;
+        bool started = true;
+
+        bsp_lcd1602_cprintf(NULL, "%s", started ? "STARTED" : "STOPPED");
 
         while (true) {
+            if (button_wait_event(0)) {
+                if (error_displayed) {
+                    error_displayed = false;
+                    memset(uart_flags, 0, sizeof(uart_flags));
+                    app_led_set(LED_EVENT_SUCCESS);
+                } else {
+                    started = !started;
+
+                    if (!started)
+                        bsp_uart_stop(BSP_UART_TYPE_CLI);
+                    else
+                        bsp_uart_start(BSP_UART_TYPE_CLI);
+                }
+
+                bsp_lcd1602_cprintf(NULL, "%s", started ? "STARTED" : "STOPPED");
+            }
+
+            if (!started)
+                continue;
+
             if (bsp_uart_read(uart_type, rx_buff, &rx_len, 0) == RES_OK) {
                 if (uart_type != prev_uart_type) {
                     if (config.txrx_delimiter == RS232_INTERSPCACE_SPACE)

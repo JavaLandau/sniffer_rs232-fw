@@ -7,13 +7,14 @@
 enum button_action {
     BUTTON_NONE = 0,
     BUTTON_PRESSED,
-    BUTTON_TWICE_PRESSED,
+    BUTTON_LONG_PRESSED,
     BUTTON_ACTION_MAX
 };
 
 struct button_init_ctx {
     uint32_t press_delay_ms;
-    uint32_t press_timeout_ms;
+    uint32_t press_min_dur_ms;
+    uint32_t long_press_dur_ms;
     void (*button_isr_cb)(enum button_action action);
 };
 

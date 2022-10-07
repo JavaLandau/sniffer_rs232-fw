@@ -415,6 +415,16 @@ static uint8_t __cli_menu_read_cb(char **data)
     return res;
 }
 
+uint8_t cli_menu_exit(void)
+{
+    return menu_exit();
+}
+
+bool cli_menu_is_started(void)
+{
+    return menu_is_started();
+}
+
 uint8_t cli_init(void)
 {
     memset(&cli_state, 0, sizeof(cli_state));

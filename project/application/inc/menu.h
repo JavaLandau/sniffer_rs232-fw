@@ -93,6 +93,7 @@ char *menu_item_label_get(struct menu_item *menu_item);
 struct menu *menu_by_label_get(const char *label);
 struct menu_item *menu_item_by_label_get(struct menu *menu, const char *label);
 struct menu_item *menu_item_by_label_only_get(const char *label);
+bool menu_is_started(void);
 uint8_t menu_start(struct menu_config *config, struct menu *menu);
 uint8_t menu_exit(void);
 struct menu_item * menu_item_add(struct menu *menu,

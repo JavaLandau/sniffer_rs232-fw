@@ -387,6 +387,11 @@ uint8_t menu_entry(struct menu *menu)
     return res;
 }
 
+bool menu_is_started(void)
+{
+    return !__exit;
+}
+
 uint8_t menu_start(struct menu_config *config, struct menu *menu)
 {
     if (!config || !config->write_callback || !config->read_callback)
