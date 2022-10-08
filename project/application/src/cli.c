@@ -69,6 +69,7 @@ static struct {
 } init_menus[] = {
     {"MAIN MENU",           &color_config_select},
     {"CONFIGURATION",       &color_config_select},
+    {"SAVE TO PRESETTINGS", &color_config_choose},
     {"PRESETTINGS",         &color_config_select},
     {"SAVE CONFIGURATION",  &color_config_choose},
     {"ALGORITHM",           &color_config_select},
@@ -94,6 +95,7 @@ static struct {
     {"MAIN MENU", "Presettings", "[]", __cli_menu_entry, "PRESETTINGS"},
     {"MAIN MENU", "Start", NULL, __cli_menu_exit, "SAVE CONFIGURATION"},
     {"CONFIGURATION", "Algorithm", NULL, __cli_menu_entry, "ALGORITHM"},
+    {"CONFIGURATION", "Save to presettings", "[]", __cli_menu_entry, "SAVE TO PRESETTINGS"},
     {"CONFIGURATION", "Trace type", "[]", __cli_menu_entry, "TRACE TYPE"},
     {"CONFIGURATION", "IDLE presence", "[]", __cli_menu_entry, "IDLE PRESENCE"},
     {"CONFIGURATION", "TX/RX delimiter", "[]", __cli_menu_entry, "TX/RX DELIMITER"},
@@ -107,6 +109,8 @@ static struct {
     {"ALGORITHM", "Attempts", "[]", __cli_menu_cfg_set, NULL},
     {"ALGORITHM", "Defaults", NULL, __cli_menu_entry, "RESET TO DEFAULTS"},
     {"ALGORITHM", "Exit", NULL, __cli_menu_entry, "CONFIGURATION"},
+    {"SAVE TO PRESETTINGS", "SAVED", NULL, __cli_menu_cfg_set, "CONFIGURATION"},
+    {"SAVE TO PRESETTINGS", "NOT SAVED", NULL, __cli_menu_cfg_set, "CONFIGURATION"},
     {"CHANNEL TYPE", "TX", NULL, __cli_menu_cfg_set, "ALGORITHM"},
     {"CHANNEL TYPE", "RX", NULL, __cli_menu_cfg_set, "ALGORITHM"},
     {"CHANNEL TYPE", "ANY", NULL, __cli_menu_cfg_set, "ALGORITHM"},
@@ -213,6 +217,9 @@ static uint8_t __cli_menu_cfg_values_set(struct flash_config *config)
 
     snprintf(value, sizeof(value), "%s", config->presettings.enable ? "Enabled" : "Disabled");
     menu_item_value_set(menu_item_by_label_only_get("MAIN MENU\\Presettings"), value);
+
+    snprintf(value, sizeof(value), "%s", config->save_to_presettings ? "*" : "");
+    menu_item_value_set(menu_item_by_label_only_get("CONFIGURATION\\Save to presettings"), value);
 
     snprintf(value, sizeof(value), "%s", rs232_trace_type_str[config->trace_type]);
     menu_item_value_set(menu_item_by_label_only_get("CONFIGURATION\\Trace type"), value);
@@ -327,6 +334,10 @@ static uint8_t __cli_menu_cfg_set(char *input, void *param)
             loc_config.alg_config.channel_type = RS232_CHANNEL_ANY;
         else if (menu_item_by_label_only_get("CHANNEL TYPE\\ALL") == menu_item)
             loc_config.alg_config.channel_type = RS232_CHANNEL_ALL;
+        else if (menu_item_by_label_only_get("SAVE TO PRESETTINGS\\SAVED") == menu_item)
+            loc_config.save_to_presettings = true;
+        else if (menu_item_by_label_only_get("SAVE TO PRESETTINGS\\NOT SAVED") == menu_item)
+            loc_config.save_to_presettings = false;
         else if (menu_item_by_label_only_get("TRACE TYPE\\HEX") == menu_item)
             loc_config.trace_type = RS232_TRACE_HEX;
         else if (menu_item_by_label_only_get("TRACE TYPE\\HEX/ASCII") == menu_item)
@@ -365,7 +376,8 @@ static uint8_t __cli_menu_cfg_set(char *input, void *param)
             is_menu_entry = false;
     }
 
-    if (memcmp(&loc_config, flash_config, sizeof(loc_config)) && sniffer_rs232_config_check(&loc_config.alg_config)) {
+    struct sniffer_rs232_config alg_config = loc_config.alg_config;
+    if (memcmp(&loc_config, flash_config, sizeof(loc_config)) && sniffer_rs232_config_check(&alg_config)) {
         is_config_changed = true;
         *flash_config = loc_config;
         __cli_menu_cfg_values_set(flash_config);
@@ -417,6 +429,9 @@ static uint8_t __cli_menu_read_cb(char **data)
 
 uint8_t cli_menu_exit(void)
 {
+    if (flash_config)
+        *flash_config = old_config;
+
     return menu_exit();
 }
 

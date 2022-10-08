@@ -29,14 +29,17 @@ struct uart_presettings {
     enum uart_stopbits stopbits;
 };
 
+#pragma pack(1)
 struct flash_config {
     struct sniffer_rs232_config alg_config;
     struct uart_presettings presettings;
     enum rs232_trace_type trace_type;
     enum rs232_interspace_type idle_presence;
     enum rs232_interspace_type txrx_delimiter;
+    bool save_to_presettings;
     uint32_t crc;
 };
+#pragma pack()
 
 #define UART_PRESETTINGS_DEFAULT()  {\
     .enable = false,\
@@ -51,7 +54,8 @@ struct flash_config {
     .presettings = UART_PRESETTINGS_DEFAULT(),\
     .trace_type = RS232_TRACE_HEX,\
     .idle_presence = RS232_INTERSPCACE_NONE,\
-    .txrx_delimiter = RS232_INTERSPCACE_NONE\
+    .txrx_delimiter = RS232_INTERSPCACE_NONE,\
+    .save_to_presettings = true\
 }
 
 uint8_t config_save(struct flash_config *config);
