@@ -13,6 +13,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#define APP_VERSION             "1.0-RC1"
+
 #define UART_RX_BUFF            (256)
 #define IS_UART_ERROR(X)        (uart_flags[X].error || uart_flags[X].overflow)
 
@@ -149,13 +151,29 @@ int main()
         internal_error(LED_EVENT_COMMON_ERROR);
     }
 
-    bsp_lcd1602_cprintf("CONFIGURATION", NULL);
+    cli_terminal_reset();
 
-    res = cli_menu_start(&config);
+    bsp_lcd1602_cprintf("SNIFFER RS-232", NULL);
 
-    if (res != RES_OK) {
-        bsp_lcd1602_cprintf("MENU ERR %u", NULL, res);
-        internal_error(LED_EVENT_COMMON_ERROR);
+    cli_trace("******************************************\r\n");
+    cli_trace("**************SNIFFER RS-232**************\r\n");
+    cli_trace("******************************************\r\n");
+    cli_trace("Version: %s\r\n", APP_VERSION);
+    cli_trace("Build date: %s %s\r\n", __DATE__, __TIME__);
+
+    bool is_pressed = false;
+    cli_welcome("Press any key to start menu", 5, &is_pressed);
+    cli_terminal_reset();
+
+    if (is_pressed) {
+        bsp_lcd1602_cprintf("CONFIGURATION", NULL);
+
+        res = cli_menu_start(&config);
+
+        if (res != RES_OK) {
+            bsp_lcd1602_cprintf("MENU ERR %u", NULL, res);
+            internal_error(LED_EVENT_COMMON_ERROR);
+        }
     }
 
     if (!config.presettings.enable) {
@@ -173,25 +191,32 @@ int main()
     while (!uart_params.baudrate) {
         if (!config.presettings.enable) {
             app_led_set(LED_EVENT_IN_PROCESS);
+            cli_trace("Algorithm is in process...\r\n");
             bsp_lcd1602_cprintf("ALG PROCESS...", NULL);
 
             res = sniffer_rs232_calc(&uart_params);
 
             if (res != RES_OK) {
                 bsp_lcd1602_cprintf("ALG ERR %u", NULL, res);
+                cli_trace("Algorithm error %u\r\n", res);
                 internal_error(LED_EVENT_COMMON_ERROR);
-            } else if (uart_params.baudrate && config.save_to_presettings) {
-                config.presettings.enable = true;
-                config.presettings.baudrate = uart_params.baudrate;
-                config.presettings.wordlen = uart_params.wordlen;
-                config.presettings.parity = uart_params.parity;
-                config.presettings.stopbits = uart_params.stopbits;
+            } else if (uart_params.baudrate) {
+                cli_trace("Start to monitoring...\r\n");
 
-                res = config_save(&config);
+                if (config.save_to_presettings) {
+                    config.presettings.enable = true;
+                    config.presettings.baudrate = uart_params.baudrate;
+                    config.presettings.wordlen = uart_params.wordlen;
+                    config.presettings.parity = uart_params.parity;
+                    config.presettings.stopbits = uart_params.stopbits;
 
-                if (res != RES_OK) {
-                    bsp_lcd1602_cprintf("FLASH ERR %u", NULL, res);
-                    internal_error(LED_EVENT_FLASH_ERROR);
+                    res = config_save(&config);
+
+                    if (res != RES_OK) {
+                        cli_trace("Failed to save to presettings: %u\r\n", res);
+                        bsp_lcd1602_cprintf("FLASH ERR %u", NULL, res);
+                        internal_error(LED_EVENT_FLASH_ERROR);
+                    }
                 }
             }
         } else {
@@ -203,6 +228,7 @@ int main()
 
         if (!uart_params.baudrate) {
             app_led_set(LED_EVENT_FAILED);
+            cli_trace("Algorithm failed, waiting for button action\r\n");
             bsp_lcd1602_cprintf("ALG FAILED", NULL);
 
             while(!button_wait_event(0));

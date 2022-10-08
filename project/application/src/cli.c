@@ -479,6 +479,48 @@ void cli_trace(const char *format, ...)
     va_end(args);
 }
 
+uint8_t cli_welcome(const char *welcome, uint8_t wait_time_s, bool *is_pressed)
+{
+    uint32_t buff_size = welcome ? strnlen(welcome, MENU_MAX_STR_LEN) : 0;
+
+    if (!buff_size || !is_pressed)
+        return RES_INVALID_PAR;
+
+    uint32_t rest_time_s = wait_time_s;
+    buff_size += 32;
+
+    char *buff_str = (char*)malloc(buff_size);
+
+    if (!buff_str)
+        return RES_MEMORY_ERR;
+
+    *is_pressed = false;
+
+    while(rest_time_s) {
+        uint32_t welcome_size = snprintf(buff_str, buff_size, "%s (%u seconds)", welcome, rest_time_s--);
+        cli_trace(buff_str);
+
+        if (bsp_uart_read(BSP_UART_TYPE_CLI, NULL, NULL, 1000) == RES_OK) {
+            *is_pressed = true;
+            break;
+        }
+
+        snprintf(buff_str, buff_size, "\33[%uD", welcome_size);
+
+        cli_trace(MENU_LINE_ERASE);
+        cli_trace(buff_str);
+    }
+
+    return RES_OK;
+}
+
+void cli_terminal_reset(void)
+{
+    cli_trace(MENU_COLOR_RESET);
+    cli_trace(MENU_SCREEN_ERASE);
+    cli_trace(MENU_RETURN_HOME);
+}
+
 uint8_t cli_menu_start(struct flash_config *config)
 {
     if (!config)

@@ -5,13 +5,6 @@
 
 #define MENU_COLOR_SIZE                 10
 
-#define MENU_COLOR_RESET                "\33[0;37;40m"
-#define MENU_RETURN_HOME                "\33[H"
-#define MENU_LINE_UP                    "\33[A"
-#define MENU_LINE_DOWN                  "\33[B"
-#define MENU_LINE_ERASE                 "\33[2K"
-#define MENU_SCREEN_ERASE               "\33[2J"
-
 #define MENU_PASS_TYPE_IS_VALID(X)      (((uint32_t)(X)) < MENU_PASS_MAX)
 #define MENU_NUM_TYPE_IS_VALID(X)       (((uint32_t)(X)) < MENU_NUM_MAX)
 

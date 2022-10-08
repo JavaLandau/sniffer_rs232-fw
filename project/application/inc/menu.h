@@ -8,6 +8,13 @@
 
 #define MENU_MAX_STR_LEN                256
 
+#define MENU_COLOR_RESET                "\33[0;37;40m"
+#define MENU_RETURN_HOME                "\33[H"
+#define MENU_LINE_UP                    "\33[A"
+#define MENU_LINE_DOWN                  "\33[B"
+#define MENU_LINE_ERASE                 "\33[2K"
+#define MENU_SCREEN_ERASE               "\33[2J"
+
 enum menu_color_type {
     MENU_COLOR_BLACK = 0,
     MENU_COLOR_RED,
