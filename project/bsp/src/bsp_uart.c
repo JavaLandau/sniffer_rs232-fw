@@ -1,8 +1,8 @@
 #include "common.h"
 #include "bsp_uart.h"
 #include <stdlib.h>
-#include <stdbool.h>
 #include <string.h>
+#include <stdbool.h>
 
 #define HAL_UART_WORDLEN_TO(X)     (((X) == BSP_UART_WORDLEN_8) ? UART_WORDLENGTH_8B : UART_WORDLENGTH_9B)
 #define HAL_UART_STOPBITS_TO(X)    (((X) == BSP_UART_STOPBITS_1) ? UART_STOPBITS_1 : UART_STOPBITS_2)
@@ -421,6 +421,17 @@ uint8_t bsp_uart_stop(enum uart_type type)
     HAL_StatusTypeDef hal_res = HAL_UART_DMAStop(&uart_obj[type].uart);
 
     return (hal_res == HAL_OK) ? RES_OK : RES_NOK;
+}
+
+bool bsp_uart_is_started(enum uart_type type)
+{
+    if (!UART_TYPE_VALID(type) || !uart_obj[type].ctx || !uart_obj[type].ctx->rx_buff)
+        return false;
+
+    bool status = (READ_BIT(uart_obj[type].uart.Instance->CR3, USART_CR3_DMAR) != 0) ||
+                  (READ_BIT(uart_obj[type].uart.Instance->CR3, USART_CR3_DMAT) != 0);
+
+    return status;
 }
 
 uint8_t bsp_uart_write(enum uart_type type, uint8_t *data, uint16_t len, uint32_t tmt_ms)

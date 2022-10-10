@@ -2,6 +2,7 @@
 #define __BSP_UART_H__
 
 #include <stdint.h>
+#include <stdbool.h>
 #include "stm32f4xx_hal.h"
 
 #define UART_TYPE_VALID(X)      (((uint32_t)(X) < BSP_UART_TYPE_MAX))
@@ -59,5 +60,6 @@ uint8_t bsp_uart_read(enum uart_type type, uint8_t *data, uint16_t *len, uint32_
 uint8_t bsp_uart_write(enum uart_type type, uint8_t *data, uint16_t len, uint32_t tmt_ms);
 uint8_t bsp_uart_start(enum uart_type type);
 uint8_t bsp_uart_stop(enum uart_type type);
+bool bsp_uart_is_started(enum uart_type type);
 
 #endif //__BSP_UART_H__

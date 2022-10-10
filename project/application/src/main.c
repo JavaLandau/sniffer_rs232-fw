@@ -13,7 +13,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define APP_VERSION             "1.0-RC1"
+#define APP_VERSION             "1.0-RC2"
 
 #define UART_RX_BUFF            (256)
 #define IS_UART_ERROR(X)        (uart_flags[X].error || uart_flags[X].overflow)
@@ -42,7 +42,6 @@ static void uart_error_cb(enum uart_type type, uint32_t error, void *params)
         return;
 
     uart_flags[type].error = error;
-    bsp_uart_start(type);
 }
 
 static void button_cb(enum button_action action)
@@ -153,20 +152,22 @@ int main()
 
     cli_terminal_reset();
 
-    bsp_lcd1602_cprintf("SNIFFER RS-232", NULL);
+    bsp_lcd1602_cprintf("SNIFFER RS-232", "V.%s", APP_VERSION);
 
-    cli_trace("******************************************\r\n");
-    cli_trace("**************SNIFFER RS-232**************\r\n");
-    cli_trace("******************************************\r\n");
+    cli_trace("**********************************************************\r\n");
+    cli_trace("**********************SNIFFER RS-232**********************\r\n");
+    cli_trace("**********************************************************\r\n");
     cli_trace("Version: %s\r\n", APP_VERSION);
     cli_trace("Build date: %s %s\r\n", __DATE__, __TIME__);
 
     bool is_pressed = false;
-    cli_welcome("Press any key to start menu", 5, &is_pressed);
+    cli_welcome("Press any key to start menu or push button to skip", 5, &press_event, &is_pressed);
     cli_terminal_reset();
 
+    press_event = false;
+
     if (is_pressed) {
-        bsp_lcd1602_cprintf("CONFIGURATION", NULL);
+        bsp_lcd1602_cprintf("CONFIGURATION", "");
 
         res = cli_menu_start(&config);
 
@@ -276,10 +277,13 @@ int main()
             } else {
                 started = !started;
 
-                if (!started)
-                    bsp_uart_stop(BSP_UART_TYPE_CLI);
-                else
-                    bsp_uart_start(BSP_UART_TYPE_CLI);
+                if (!started) {
+                    bsp_uart_stop(BSP_UART_TYPE_RS232_TX);
+                    bsp_uart_stop(BSP_UART_TYPE_RS232_RX);
+                } else {
+                    bsp_uart_start(BSP_UART_TYPE_RS232_TX);
+                    bsp_uart_start(BSP_UART_TYPE_RS232_RX);
+                }
             }
 
             bsp_lcd1602_cprintf(NULL, "%s", started ? "STARTED" : "STOPPED");
@@ -287,6 +291,11 @@ int main()
 
         if (!started)
             continue;
+
+        for (enum uart_type type = BSP_UART_TYPE_CLI; type < BSP_UART_TYPE_MAX; type++) {
+            if(!bsp_uart_is_started(type))
+                bsp_uart_start(type);
+        }
 
         if (bsp_uart_read(uart_type, rx_buff, &rx_len, 0) == RES_OK) {
             if (uart_type != prev_uart_type) {

@@ -479,7 +479,7 @@ void cli_trace(const char *format, ...)
     va_end(args);
 }
 
-uint8_t cli_welcome(const char *welcome, uint8_t wait_time_s, bool *is_pressed)
+uint8_t cli_welcome(const char *welcome, uint8_t wait_time_s, bool *forced_exit, bool *is_pressed)
 {
     uint32_t buff_size = welcome ? strnlen(welcome, MENU_MAX_STR_LEN) : 0;
 
@@ -500,9 +500,13 @@ uint8_t cli_welcome(const char *welcome, uint8_t wait_time_s, bool *is_pressed)
         uint32_t welcome_size = snprintf(buff_str, buff_size, "%s (%u seconds)", welcome, rest_time_s--);
         cli_trace(buff_str);
 
-        if (bsp_uart_read(BSP_UART_TYPE_CLI, NULL, NULL, 1000) == RES_OK) {
-            *is_pressed = true;
-            break;
+        const uint32_t time_step = 100;
+        for (uint32_t i = 0; i < (1000 / time_step); i++) {
+            if (*forced_exit || bsp_uart_read(BSP_UART_TYPE_CLI, NULL, NULL, time_step) == RES_OK) {
+                *is_pressed = !*forced_exit;
+                rest_time_s = 0;
+                break;
+            }
         }
 
         snprintf(buff_str, buff_size, "\33[%uD", welcome_size);
