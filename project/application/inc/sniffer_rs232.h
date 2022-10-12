@@ -24,6 +24,7 @@ struct sniffer_rs232_config {
     uint32_t min_detect_bits;
     uint32_t exec_timeout;
     uint32_t calc_attempts;
+    bool lin_detection;
 };
 
 #define SNIFFER_RS232_CFG_PARAM_MIN(X)          sniffer_rs232_config_item_range((uint32_t)&((struct sniffer_rs232_config*)0)->X, true)
@@ -38,7 +39,8 @@ struct sniffer_rs232_config {
                 .baudrate_tolerance = 10,\
                 .min_detect_bits = 48,\
                 .exec_timeout = 600,\
-                .calc_attempts = 3\
+                .calc_attempts = 3,\
+                .lin_detection = false\
             }
 
 uint8_t sniffer_rs232_init(struct sniffer_rs232_config *__config);

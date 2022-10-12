@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include "stm32f4xx_ll_usart.h"
 
 #define HAL_UART_WORDLEN_TO(X)     (((X) == BSP_UART_WORDLEN_8) ? UART_WORDLENGTH_8B : UART_WORDLENGTH_9B)
 #define HAL_UART_STOPBITS_TO(X)    (((X) == BSP_UART_STOPBITS_1) ? UART_STOPBITS_1 : UART_STOPBITS_2)
@@ -20,10 +21,11 @@ struct uart_ctx {
 static struct {
     UART_HandleTypeDef uart;
     struct uart_ctx *ctx;
+    bool frame_error;
 } uart_obj[BSP_UART_TYPE_MAX] = {
-    {.uart = {.Instance = UART4}, .ctx = NULL},
-    {.uart = {.Instance = USART2}, .ctx = NULL},
-    {.uart = {.Instance = USART3}, .ctx = NULL}
+    {.uart = {.Instance = UART4}, .ctx = NULL, .frame_error = false},
+    {.uart = {.Instance = USART2}, .ctx = NULL, .frame_error = false},
+    {.uart = {.Instance = USART3}, .ctx = NULL, .frame_error = false}
 };
 
 static enum uart_type __uart_type_get(USART_TypeDef *instance)
@@ -386,14 +388,14 @@ static void __uart_rx_callback(UART_HandleTypeDef *huart, uint16_t pos)
     }
 }
 
-static void __uart_error_callback(enum uart_type type)
+static void __uart_error_callback(enum uart_type type, uint32_t error)
 {
     if (!UART_TYPE_VALID(type))
         return;
 
     if (type != BSP_UART_TYPE_MAX) {
         if (uart_obj[type].ctx && uart_obj[type].ctx->init.error_isr_cb)
-            uart_obj[type].ctx->init.error_isr_cb(type, uart_obj[type].uart.ErrorCode & BSP_UART_ERRORS_ALL, uart_obj[type].ctx->init.params);
+            uart_obj[type].ctx->init.error_isr_cb(type, error, uart_obj[type].ctx->init.params);
     }
 }
 
@@ -405,9 +407,13 @@ uint8_t bsp_uart_start(enum uart_type type)
     if (uart_obj[type].ctx && uart_obj[type].ctx->rx_buff) {
         uart_obj[type].ctx->rx_idx_get = 0;
         uart_obj[type].ctx->rx_idx_set = 0;
+        uart_obj[type].frame_error = false;
 
         if (HAL_UARTEx_ReceiveToIdle_DMA(&uart_obj[type].uart, uart_obj[type].ctx->rx_buff, uart_obj[type].ctx->init.rx_size) != HAL_OK)
             return RES_NOK;
+
+        if (uart_obj[type].ctx->init.lin_enabled)
+            __HAL_UART_ENABLE_IT(&uart_obj[type].uart, UART_IT_LBD);
     }
 
     return RES_OK;
@@ -468,6 +474,14 @@ uint8_t bsp_uart_write(enum uart_type type, uint8_t *data, uint16_t len, uint32_
     return RES_OK;
 }
 
+bool bsp_uart_rx_queue_is_empty(enum uart_type type)
+{
+    if (!UART_TYPE_VALID(type))
+        return true;
+
+    return (uart_obj[type].ctx->rx_idx_set == uart_obj[type].ctx->rx_idx_get);
+}
+
 uint8_t bsp_uart_read(enum uart_type type, uint8_t *data, uint16_t *len, uint32_t tmt_ms)
 {
     if (!UART_TYPE_VALID(type) || !uart_obj[type].ctx || !uart_obj[type].ctx->rx_buff)
@@ -525,6 +539,9 @@ uint8_t bsp_uart_init(enum uart_type type, struct uart_init_ctx *init)
 
     if (!init->baudrate)
         return RES_INVALID_PAR;
+
+    if (type == BSP_UART_TYPE_CLI && init->lin_enabled)
+        return RES_NOT_SUPPORTED;
 
     uint8_t res = RES_OK;
     HAL_StatusTypeDef hal_res = HAL_OK;
@@ -595,7 +612,10 @@ uint8_t bsp_uart_init(enum uart_type type, struct uart_init_ctx *init)
         uart_obj[type].uart.Init.Mode           = (type == BSP_UART_TYPE_CLI) ? UART_MODE_TX_RX : UART_MODE_RX;
         uart_obj[type].uart.Init.OverSampling   = UART_OVERSAMPLING_16;
 
-        hal_res = HAL_UART_Init(&uart_obj[type].uart);
+        if (!uart_obj[type].ctx->init.lin_enabled)
+            hal_res = HAL_UART_Init(&uart_obj[type].uart);
+        else
+            hal_res = HAL_LIN_Init(&uart_obj[type].uart, UART_LINBREAKDETECTLENGTH_11B);
 
         if (hal_res != HAL_OK) {
             res = RES_NOK;
@@ -657,28 +677,57 @@ uint8_t bsp_uart_deinit(enum uart_type type)
     return res;
 }
 
+static void __uart_irq_handler(enum uart_type type)
+{
+    if (!UART_TYPE_VALID(type))
+        return;
+
+    uint32_t error = 0;
+    USART_TypeDef *instance = uart_obj[type].uart.Instance;
+
+    if (LL_USART_IsEnabledLIN(instance) && LL_USART_IsEnabledIT_LBD(instance)) {
+        if (LL_USART_IsActiveFlag_LBD(instance)) {
+            uart_obj[type].frame_error = false;
+            LL_USART_ClearFlag_LBD(instance);
+
+            if (uart_obj[type].ctx && uart_obj[type].ctx->init.lin_break_isr_cb)
+                uart_obj[type].ctx->init.lin_break_isr_cb(type, uart_obj[type].ctx->init.params);
+        }
+
+        if (uart_obj[type].frame_error) {
+            error = BSP_UART_ERROR_FE;
+            uart_obj[type].frame_error = false;
+        } else {
+            if (LL_USART_IsActiveFlag_FE(instance)) {
+                if (LL_USART_IsActiveFlag_RXNE(instance)) {
+                    return;
+                } else {
+                    uart_obj[type].frame_error = true;
+                    LL_USART_ClearFlag_FE(instance);
+                }
+            }
+        }
+    }
+
+    HAL_UART_IRQHandler(&uart_obj[type].uart);
+
+    if ((uart_obj[type].uart.ErrorCode & BSP_UART_ERRORS_ALL) | error)
+        __uart_error_callback(type, (uart_obj[type].uart.ErrorCode & BSP_UART_ERRORS_ALL) | error);
+}
+
 void UART4_IRQHandler(void)
 {
-    HAL_UART_IRQHandler(&uart_obj[BSP_UART_TYPE_CLI].uart);
-
-    if (uart_obj[BSP_UART_TYPE_CLI].uart.ErrorCode & BSP_UART_ERRORS_ALL)
-        __uart_error_callback(BSP_UART_TYPE_CLI);
+    __uart_irq_handler(BSP_UART_TYPE_CLI);
 }
 
 void USART2_IRQHandler(void)
 {
-    HAL_UART_IRQHandler(&uart_obj[BSP_UART_TYPE_RS232_TX].uart);
-
-    if (uart_obj[BSP_UART_TYPE_RS232_TX].uart.ErrorCode & BSP_UART_ERRORS_ALL)
-        __uart_error_callback(BSP_UART_TYPE_RS232_TX);
+    __uart_irq_handler(BSP_UART_TYPE_RS232_TX);
 }
 
 void USART3_IRQHandler(void)
 {
-    HAL_UART_IRQHandler(&uart_obj[BSP_UART_TYPE_RS232_RX].uart);
-
-    if (uart_obj[BSP_UART_TYPE_RS232_RX].uart.ErrorCode & BSP_UART_ERRORS_ALL)
-        __uart_error_callback(BSP_UART_TYPE_RS232_RX);
+    __uart_irq_handler(BSP_UART_TYPE_RS232_RX);
 }
 
 void DMA1_Stream1_IRQHandler(void)

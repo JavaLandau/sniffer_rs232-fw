@@ -74,10 +74,12 @@ static struct {
     {"SAVE CONFIGURATION",  &color_config_choose},
     {"ALGORITHM",           &color_config_select},
     {"CHANNEL TYPE",        &color_config_select},
+    {"LIN DETECTION",       &color_config_choose},
     {"RESET TO DEFAULTS",   &color_config_choose},
     {"TRACE TYPE",          &color_config_select},
     {"IDLE PRESENCE",       &color_config_select},
     {"TX/RX DELIMITER",     &color_config_select},
+    {"LIN PROTOCOL",        &color_config_choose},
     {"WORD LENGTH",         &color_config_select},
     {"PARITY",              &color_config_select},
     {"STOP BITS",           &color_config_select},
@@ -107,14 +109,17 @@ static struct {
     {"ALGORITHM", "Minimum bits", "[]", __cli_menu_cfg_set, NULL},
     {"ALGORITHM", "Timeout", "[]", __cli_menu_cfg_set, NULL},
     {"ALGORITHM", "Attempts", "[]", __cli_menu_cfg_set, NULL},
+    {"ALGORITHM", "LIN detection", "[]", __cli_menu_entry, "LIN DETECTION"},
     {"ALGORITHM", "Defaults", NULL, __cli_menu_entry, "RESET TO DEFAULTS"},
     {"ALGORITHM", "Exit", NULL, __cli_menu_entry, "CONFIGURATION"},
-    {"SAVE TO PRESETTINGS", "SAVED", NULL, __cli_menu_cfg_set, "CONFIGURATION"},
-    {"SAVE TO PRESETTINGS", "NOT SAVED", NULL, __cli_menu_cfg_set, "CONFIGURATION"},
+    {"SAVE TO PRESETTINGS", "Saved", NULL, __cli_menu_cfg_set, "CONFIGURATION"},
+    {"SAVE TO PRESETTINGS", "Not saved", NULL, __cli_menu_cfg_set, "CONFIGURATION"},
     {"CHANNEL TYPE", "TX", NULL, __cli_menu_cfg_set, "ALGORITHM"},
     {"CHANNEL TYPE", "RX", NULL, __cli_menu_cfg_set, "ALGORITHM"},
     {"CHANNEL TYPE", "ANY", NULL, __cli_menu_cfg_set, "ALGORITHM"},
     {"CHANNEL TYPE", "ALL", NULL, __cli_menu_cfg_set, "ALGORITHM"},
+    {"LIN DETECTION", "Enable", NULL, __cli_menu_cfg_set, "ALGORITHM"},
+    {"LIN DETECTION", "Disable", NULL, __cli_menu_cfg_set, "ALGORITHM"},
     {"RESET TO DEFAULTS", "YES", NULL, __cli_menu_set_defaults, "ALGORITHM"},
     {"RESET TO DEFAULTS", "NO", NULL, __cli_menu_entry, "ALGORITHM"},
     {"TRACE TYPE", "HEX", NULL, __cli_menu_cfg_set, "CONFIGURATION"},
@@ -126,11 +131,14 @@ static struct {
     {"TX/RX DELIMITER", "SPACE", NULL, __cli_menu_cfg_set, "CONFIGURATION"},
     {"TX/RX DELIMITER", "NEW LINE", NULL, __cli_menu_cfg_set, "CONFIGURATION"},
     {"PRESETTINGS", "Baudrate", "[]", __cli_menu_cfg_set, NULL},
+    {"PRESETTINGS", "LIN protocol", "[]", __cli_menu_entry, "LIN PROTOCOL"},
     {"PRESETTINGS", "Word length", "[]", __cli_menu_entry, "WORD LENGTH"},
     {"PRESETTINGS", "Parity", "[]", __cli_menu_entry, "PARITY"},
     {"PRESETTINGS", "Stop bits", "[]", __cli_menu_entry, "STOP BITS"},
     {"PRESETTINGS", "Enable", "[]", __cli_menu_entry, "PRESETTINGS ENABLE"},
     {"PRESETTINGS", "Exit", NULL, __cli_menu_entry, "MAIN MENU"},
+    {"LIN PROTOCOL", "Enable", NULL, __cli_menu_cfg_set, "PRESETTINGS"},
+    {"LIN PROTOCOL", "Disable", NULL, __cli_menu_cfg_set, "PRESETTINGS"},
     {"WORD LENGTH", "8 BITS", NULL, __cli_menu_cfg_set, "PRESETTINGS"},
     {"WORD LENGTH", "9 BITS", NULL, __cli_menu_cfg_set, "PRESETTINGS"},
     {"PARITY", "NONE", NULL, __cli_menu_cfg_set, "PRESETTINGS"},
@@ -251,6 +259,12 @@ static uint8_t __cli_menu_cfg_values_set(struct flash_config *config)
     snprintf(value, sizeof(value), "%u", config->alg_config.calc_attempts);
     menu_item_value_set(menu_item_by_label_only_get("ALGORITHM\\Attempts"), value);
 
+    snprintf(value, sizeof(value), "%s", config->alg_config.lin_detection ? "*" : "");
+    menu_item_value_set(menu_item_by_label_only_get("ALGORITHM\\LIN detection"), value);
+
+    snprintf(value, sizeof(value), "%s", config->presettings.lin_enabled ? "*" : "");
+    menu_item_value_set(menu_item_by_label_only_get("PRESETTINGS\\LIN protocol"), value);
+
     snprintf(value, sizeof(value), "%u", config->presettings.baudrate);
     menu_item_value_set(menu_item_by_label_only_get("PRESETTINGS\\Baudrate"), value);
 
@@ -326,54 +340,71 @@ static uint8_t __cli_menu_cfg_set(char *input, void *param)
     } else {
         is_menu_entry = true;
 
-        if (menu_item_by_label_only_get("CHANNEL TYPE\\TX") == menu_item)
+        if (menu_item_by_label_only_get("LIN DETECTION\\Enable") == menu_item) {
+            loc_config.alg_config.lin_detection = true;
+        } else if (menu_item_by_label_only_get("LIN DETECTION\\Disable") == menu_item) {
+            loc_config.alg_config.lin_detection = false;
+        } else if (menu_item_by_label_only_get("CHANNEL TYPE\\TX") == menu_item) {
             loc_config.alg_config.channel_type = RS232_CHANNEL_TX;
-        else if (menu_item_by_label_only_get("CHANNEL TYPE\\RX") == menu_item)
+        } else if (menu_item_by_label_only_get("CHANNEL TYPE\\RX") == menu_item) {
             loc_config.alg_config.channel_type = RS232_CHANNEL_RX;
-        else if (menu_item_by_label_only_get("CHANNEL TYPE\\ANY") == menu_item)
+        } else if (menu_item_by_label_only_get("CHANNEL TYPE\\ANY") == menu_item) {
             loc_config.alg_config.channel_type = RS232_CHANNEL_ANY;
-        else if (menu_item_by_label_only_get("CHANNEL TYPE\\ALL") == menu_item)
+        } else if (menu_item_by_label_only_get("CHANNEL TYPE\\ALL") == menu_item) {
             loc_config.alg_config.channel_type = RS232_CHANNEL_ALL;
-        else if (menu_item_by_label_only_get("SAVE TO PRESETTINGS\\SAVED") == menu_item)
+        } else if (menu_item_by_label_only_get("SAVE TO PRESETTINGS\\Saved") == menu_item) {
             loc_config.save_to_presettings = true;
-        else if (menu_item_by_label_only_get("SAVE TO PRESETTINGS\\NOT SAVED") == menu_item)
+        } else if (menu_item_by_label_only_get("SAVE TO PRESETTINGS\\Not saved") == menu_item) {
             loc_config.save_to_presettings = false;
-        else if (menu_item_by_label_only_get("TRACE TYPE\\HEX") == menu_item)
+        } else if (menu_item_by_label_only_get("TRACE TYPE\\HEX") == menu_item) {
             loc_config.trace_type = RS232_TRACE_HEX;
-        else if (menu_item_by_label_only_get("TRACE TYPE\\HEX/ASCII") == menu_item)
+        } else if (menu_item_by_label_only_get("TRACE TYPE\\HEX/ASCII") == menu_item) {
             loc_config.trace_type = RS232_TRACE_HYBRID;
-        else if (menu_item_by_label_only_get("IDLE PRESENCE\\NONE") == menu_item)
+        } else if (menu_item_by_label_only_get("IDLE PRESENCE\\NONE") == menu_item) {
             loc_config.idle_presence = RS232_INTERSPCACE_NONE;
-        else if (menu_item_by_label_only_get("IDLE PRESENCE\\SPACE") == menu_item)
+        } else if (menu_item_by_label_only_get("IDLE PRESENCE\\SPACE") == menu_item) {
             loc_config.idle_presence = RS232_INTERSPCACE_SPACE;
-        else if (menu_item_by_label_only_get("IDLE PRESENCE\\NEW LINE") == menu_item)
+        } else if (menu_item_by_label_only_get("IDLE PRESENCE\\NEW LINE") == menu_item) {
             loc_config.idle_presence = RS232_INTERSPCACE_NEW_LINE;
-        else if (menu_item_by_label_only_get("TX/RX DELIMITER\\NONE") == menu_item)
+        } else if (menu_item_by_label_only_get("TX/RX DELIMITER\\NONE") == menu_item) {
             loc_config.txrx_delimiter = RS232_INTERSPCACE_NONE;
-        else if (menu_item_by_label_only_get("TX/RX DELIMITER\\SPACE") == menu_item)
+        } else if (menu_item_by_label_only_get("TX/RX DELIMITER\\SPACE") == menu_item) {
             loc_config.txrx_delimiter = RS232_INTERSPCACE_SPACE;
-        else if (menu_item_by_label_only_get("TX/RX DELIMITER\\NEW LINE") == menu_item)
+        } else if (menu_item_by_label_only_get("TX/RX DELIMITER\\NEW LINE") == menu_item) {
             loc_config.txrx_delimiter = RS232_INTERSPCACE_NEW_LINE;
-        else if (menu_item_by_label_only_get("WORD LENGTH\\8 BITS") == menu_item)
+        } else if (menu_item_by_label_only_get("LIN PROTOCOL\\Enable") == menu_item) {
+            loc_config.presettings.lin_enabled = true;
             loc_config.presettings.wordlen = BSP_UART_WORDLEN_8;
-        else if (menu_item_by_label_only_get("WORD LENGTH\\9 BITS") == menu_item)
-            loc_config.presettings.wordlen = BSP_UART_WORDLEN_9;
-        else if (menu_item_by_label_only_get("PARITY\\NONE") == menu_item)
             loc_config.presettings.parity = BSP_UART_PARITY_NONE;
-        else if (menu_item_by_label_only_get("PARITY\\EVEN") == menu_item)
-            loc_config.presettings.parity = BSP_UART_PARITY_EVEN;
-        else if (menu_item_by_label_only_get("PARITY\\ODD") == menu_item)
-            loc_config.presettings.parity = BSP_UART_PARITY_ODD;
-        else if (menu_item_by_label_only_get("STOP BITS\\1 BIT") == menu_item)
             loc_config.presettings.stopbits = BSP_UART_STOPBITS_1;
-        else if (menu_item_by_label_only_get("STOP BITS\\2 BITS") == menu_item)
-            loc_config.presettings.stopbits = BSP_UART_STOPBITS_2;
-        else if (menu_item_by_label_only_get("PRESETTINGS ENABLE\\Enable") == menu_item)
-            loc_config.presettings.enable = true;
-        else if (menu_item_by_label_only_get("PRESETTINGS ENABLE\\Disable") == menu_item)
+        } else if (menu_item_by_label_only_get("LIN PROTOCOL\\Disable") == menu_item) {
+            loc_config.presettings.lin_enabled = false;
+        } else if (menu_item_by_label_only_get("WORD LENGTH\\8 BITS") == menu_item) {
+            loc_config.presettings.wordlen = BSP_UART_WORDLEN_8;
+        } else if (menu_item_by_label_only_get("WORD LENGTH\\9 BITS") == menu_item) {
+            if (!loc_config.presettings.lin_enabled)
+                loc_config.presettings.wordlen = BSP_UART_WORDLEN_9;
+        } else if (menu_item_by_label_only_get("PARITY\\NONE") == menu_item) {
+            loc_config.presettings.parity = BSP_UART_PARITY_NONE;
+        } else if (menu_item_by_label_only_get("PARITY\\EVEN") == menu_item) {
+            if (!loc_config.presettings.lin_enabled)
+                loc_config.presettings.parity = BSP_UART_PARITY_EVEN;
+        } else if (menu_item_by_label_only_get("PARITY\\ODD") == menu_item) {
+            if (!loc_config.presettings.lin_enabled)
+                loc_config.presettings.parity = BSP_UART_PARITY_ODD;
+        } else if (menu_item_by_label_only_get("STOP BITS\\1 BIT") == menu_item) {
+            loc_config.presettings.stopbits = BSP_UART_STOPBITS_1;
+        } else if (menu_item_by_label_only_get("STOP BITS\\2 BITS") == menu_item) {
+            if (!loc_config.presettings.lin_enabled)
+                loc_config.presettings.stopbits = BSP_UART_STOPBITS_2;
+        } else if (menu_item_by_label_only_get("PRESETTINGS ENABLE\\Enable") == menu_item) {
+            if (loc_config.presettings.baudrate)
+                loc_config.presettings.enable = true;
+        } else if (menu_item_by_label_only_get("PRESETTINGS ENABLE\\Disable") == menu_item) {
             loc_config.presettings.enable = false;
-        else
+        } else {
             is_menu_entry = false;
+        }
     }
 
     struct sniffer_rs232_config alg_config = loc_config.alg_config;
@@ -449,7 +480,7 @@ uint8_t cli_init(void)
     if (!__menu_rx_buff)
         return RES_MEMORY_ERR;
 
-    struct uart_init_ctx uart_init;
+    struct uart_init_ctx uart_init = {0};
     uart_init.baudrate = 921600;
     uart_init.wordlen = BSP_UART_WORDLEN_8;
     uart_init.parity = BSP_UART_PARITY_NONE;
@@ -586,7 +617,11 @@ uint8_t cli_menu_start(struct flash_config *config)
     return RES_OK;
 }
 
-uint8_t cli_rs232_trace(enum uart_type uart_type, enum rs232_trace_type trace_type, uint8_t *data, uint32_t len)
+uint8_t cli_rs232_trace(enum uart_type uart_type,
+                        enum rs232_trace_type trace_type,
+                        uint8_t *data,
+                        uint32_t len,
+                        bool break_line)
 {
     if (!data || !len)
         return RES_INVALID_PAR;
@@ -603,8 +638,8 @@ uint8_t cli_rs232_trace(enum uart_type uart_type, enum rs232_trace_type trace_ty
     bool first_byte = true;
     uint8_t res = RES_OK;
 
-    for (uint32_t i = 0; i < len; i++) {
-        bool is_hex = (trace_type == RS232_TRACE_HEX) || !IS_PRINTABLE(data[i]);
+    for (uint32_t i = 0; i < len || break_line; i++) {
+        bool is_hex = (trace_type == RS232_TRACE_HEX) || !IS_PRINTABLE(data[i]) || break_line;
         if ((is_hex != is_prev_hex) || first_byte) {
             total_len += snprintf((char*)&tx_buff[total_len], UART_TX_BUFF_SIZE - total_len, "\33[%1u;3%1um", 
                                     is_hex ? 1 : 0, (uart_type == BSP_UART_TYPE_RS232_TX) ? TX_COLOR : RX_COLOR);
@@ -617,10 +652,22 @@ uint8_t cli_rs232_trace(enum uart_type uart_type, enum rs232_trace_type trace_ty
             break;
         }
 
-        if (is_hex)
-            total_len += snprintf((char*)&tx_buff[total_len], UART_TX_BUFF_SIZE - total_len, "\\%02X", data[i]);
-        else
-            total_len += snprintf((char*)&tx_buff[total_len], UART_TX_BUFF_SIZE - total_len, "%c", data[i]);
+        if (break_line) {
+            total_len += snprintf((char*)&tx_buff[total_len], UART_TX_BUFF_SIZE - total_len, "\\BRK");
+            break_line = false;
+        }
+
+       if (total_len >= UART_TX_BUFF_SIZE) {
+            res = RES_OVERFLOW;
+            break;
+        }
+
+        if (i < len) {
+            if (is_hex)
+                total_len += snprintf((char*)&tx_buff[total_len], UART_TX_BUFF_SIZE - total_len, "\\%02X", data[i]);
+            else
+                total_len += snprintf((char*)&tx_buff[total_len], UART_TX_BUFF_SIZE - total_len, "%c", data[i]);
+        }
 
        if (total_len >= UART_TX_BUFF_SIZE) {
             res = RES_OVERFLOW;

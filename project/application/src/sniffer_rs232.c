@@ -6,6 +6,7 @@
 
 #define BUFFER_SIZE             (512)
 #define UART_BUFF_SIZE          (128)
+#define LIN_BREAK_MIN_LEN       (10)
 
 static TIM_HandleTypeDef htim6 = {.Instance = TIM6};
 static EXTI_HandleTypeDef hexti1 = {.Line = EXTI_LINE_3};
@@ -28,8 +29,10 @@ struct baud_calc_ctx {
     uint32_t    *buffer;
     uint32_t    idx;
     uint32_t    min_len_bit;
+    uint32_t    max_len_bit;
     uint32_t    baudrate;
     bool        toggle_bit;
+    bool        lin_detected;
     bool        done;
 };
 
@@ -148,6 +151,11 @@ static void __sniffer_rs232_line_baudrate_calc(struct baud_calc_ctx *ctx)
                     ctx->min_len_bit = len_bit;
                     ctx->baudrate = baudrate;
                 }
+            } else if (len_bit > ctx->max_len_bit) {
+                ctx->max_len_bit = len_bit;
+
+                if (!ctx->lin_detected)
+                    ctx->lin_detected = (ctx->max_len_bit / ctx->min_len_bit) > LIN_BREAK_MIN_LEN;
             }
         }
 
@@ -157,9 +165,9 @@ static void __sniffer_rs232_line_baudrate_calc(struct baud_calc_ctx *ctx)
     ctx->done = (ctx->idx >= (4 * config.min_detect_bits));
 }
 
-static uint8_t __sniffer_rs232_baudrate_calc(enum rs232_channel_type channel_type, uint32_t *baudrate)
+static uint8_t __sniffer_rs232_baudrate_calc(enum rs232_channel_type channel_type, uint32_t *baudrate, bool *lin_detected)
 {
-    if (!baudrate || !RS232_CHANNEL_TYPE_VALID(channel_type))
+    if (!baudrate || !lin_detected || !RS232_CHANNEL_TYPE_VALID(channel_type))
         return RES_INVALID_PAR;
 
     const uint32_t uart_max_exec_tmt = 1000 * config.exec_timeout;
@@ -169,10 +177,10 @@ static uint8_t __sniffer_rs232_baudrate_calc(enum rs232_channel_type channel_typ
     tx_cnt = rx_cnt = 0;
 
     struct baud_calc_ctx tx_ctx = {.cnt = &tx_cnt, .buffer = tx_buffer, .idx = 0, .min_len_bit = UINT32_MAX,
-                                    .baudrate = 0, .toggle_bit = false, .done = false};
+                                   .max_len_bit = 0, .baudrate = 0, .toggle_bit = false, .lin_detected = false, .done = false};
 
     struct baud_calc_ctx rx_ctx = {.cnt = &rx_cnt, .buffer = rx_buffer, .idx = 0, .min_len_bit = UINT32_MAX,
-                                    .baudrate = 0, .toggle_bit = false, .done = false};
+                                   .max_len_bit = 0, .baudrate = 0, .toggle_bit = false, .lin_detected = false, .done = false};
 
     uint32_t res = RES_OK;
 
@@ -253,6 +261,7 @@ static uint8_t __sniffer_rs232_baudrate_calc(enum rs232_channel_type channel_typ
     HAL_NVIC_DisableIRQ(EXTI9_5_IRQn);
 
     *baudrate = calc_baudrate;
+    *lin_detected = tx_ctx.lin_detected || rx_ctx.lin_detected;
 
     return res;
 }
@@ -552,13 +561,23 @@ uint8_t sniffer_rs232_calc(struct uart_init_ctx *uart_params)
 
     for (uint8_t i = 0; i < config.calc_attempts; i++) {
         uint32_t baudrate = 0;
-        res = __sniffer_rs232_baudrate_calc(config.channel_type, &baudrate);
+        bool lin_detected = false;
+        res = __sniffer_rs232_baudrate_calc(config.channel_type, &baudrate, &lin_detected);
 
         if (res != RES_OK)
             break;
 
         if (!baudrate)
             continue;
+
+        if (config.lin_detection && lin_detected) {
+            uart_params->baudrate = baudrate;
+            uart_params->lin_enabled = true;
+            uart_params->wordlen = BSP_UART_WORDLEN_8;
+            uart_params->parity = BSP_UART_PARITY_NONE;
+            uart_params->stopbits = BSP_UART_STOPBITS_1;
+            break;
+        }
 
         int8_t hyp_num = 0;
         res = __sniffer_rs232_params_calc(config.channel_type, baudrate, &hyp_num);

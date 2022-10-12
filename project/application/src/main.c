@@ -26,7 +26,16 @@ static bool press_event = false;
 static struct {
     uint32_t error;
     bool overflow;
+    bool lin_break;
 } uart_flags[BSP_UART_TYPE_MAX] = {0};
+
+static void uart_lin_break_cb(enum uart_type type, void *params)
+{
+    if (!UART_TYPE_VALID(type))
+        return;
+
+    uart_flags[type].lin_break = true;
+}
 
 static void uart_overflow_cb(enum uart_type type, void *params)
 {
@@ -41,7 +50,7 @@ static void uart_error_cb(enum uart_type type, uint32_t error, void *params)
     if (!UART_TYPE_VALID(type))
         return;
 
-    uart_flags[type].error = error;
+    uart_flags[type].error |= error;
 }
 
 static void button_cb(enum button_action action)
@@ -82,7 +91,7 @@ static void internal_error(enum led_event led_event)
 {
     app_led_set(led_event);
 
-    while(1){}
+    while(1);
 }
 
 int main()
@@ -165,9 +174,10 @@ int main()
     cli_terminal_reset();
 
     press_event = false;
+    bsp_lcd1602_display_clear();
 
     if (is_pressed) {
-        bsp_lcd1602_cprintf("CONFIGURATION", "");
+        bsp_lcd1602_cprintf("CONFIGURATION", NULL);
 
         res = cli_menu_start(&config);
 
@@ -188,6 +198,7 @@ int main()
     }
 
     struct uart_init_ctx uart_params = {0};
+    bool presettings_enabled = config.presettings.enable;
 
     while (!uart_params.baudrate) {
         if (!config.presettings.enable) {
@@ -202,10 +213,9 @@ int main()
                 cli_trace("Algorithm error %u\r\n", res);
                 internal_error(LED_EVENT_COMMON_ERROR);
             } else if (uart_params.baudrate) {
-                cli_trace("Start to monitoring...\r\n");
-
                 if (config.save_to_presettings) {
                     config.presettings.enable = true;
+                    config.presettings.lin_enabled = uart_params.lin_enabled;
                     config.presettings.baudrate = uart_params.baudrate;
                     config.presettings.wordlen = uart_params.wordlen;
                     config.presettings.parity = uart_params.parity;
@@ -221,6 +231,7 @@ int main()
                 }
             }
         } else {
+            uart_params.lin_enabled = config.presettings.lin_enabled;
             uart_params.baudrate = config.presettings.baudrate;
             uart_params.wordlen = config.presettings.wordlen;
             uart_params.parity = config.presettings.parity;
@@ -237,13 +248,20 @@ int main()
     }
 
     app_led_set(LED_EVENT_SUCCESS);
-    bsp_lcd1602_cprintf("%c: %u,%1u%c%1u", NULL, config.presettings.enable ? 'P' : 'S', uart_params.baudrate,
-                                                    uart_params.wordlen, uart_parity_sym[uart_params.parity], 
-                                                    uart_params.stopbits);
+    cli_trace("Start to monitoring...\r\n");
+
+    if (!config.presettings.lin_enabled) {
+        bsp_lcd1602_cprintf("%c: %u,%1u%c%1u", NULL, presettings_enabled ? 'P' : 'S', uart_params.baudrate,
+                                                     uart_params.wordlen, uart_parity_sym[uart_params.parity], 
+                                                     uart_params.stopbits);
+    } else {
+        bsp_lcd1602_cprintf("%c: %u,LIN", NULL, presettings_enabled ? 'P' : 'S', uart_params.baudrate);
+    }
 
     uart_params.rx_size = UART_RX_BUFF;
     uart_params.overflow_isr_cb = uart_overflow_cb;
     uart_params.error_isr_cb = uart_error_cb;
+    uart_params.lin_break_isr_cb = uart_lin_break_cb;
 
     res = bsp_uart_init(BSP_UART_TYPE_RS232_TX, &uart_params);
 
@@ -265,6 +283,9 @@ int main()
     uint8_t rx_buff[UART_RX_BUFF] = {0};
     uint16_t rx_len = 0;
     bool started = true;
+
+    uint8_t prev_rs232_tx_error = 0;
+    uint8_t prev_rs232_rx_error = 0;
 
     bsp_lcd1602_cprintf(NULL, "%s", started ? "STARTED" : "STOPPED");
 
@@ -289,15 +310,22 @@ int main()
             bsp_lcd1602_cprintf(NULL, "%s", started ? "STARTED" : "STOPPED");
         }
 
+        bsp_uart_read(BSP_UART_TYPE_CLI, NULL, NULL, 0);
+
         if (!started)
             continue;
 
         for (enum uart_type type = BSP_UART_TYPE_CLI; type < BSP_UART_TYPE_MAX; type++) {
-            if(!bsp_uart_is_started(type))
+            if (!bsp_uart_is_started(type) && bsp_uart_rx_queue_is_empty(type))
                 bsp_uart_start(type);
         }
 
         if (bsp_uart_read(uart_type, rx_buff, &rx_len, 0) == RES_OK) {
+            bool lin_break = uart_flags[uart_type].lin_break ? 1 : 0;
+
+            if (lin_break)
+                uart_flags[uart_type].lin_break = false;
+
             if (uart_type != prev_uart_type) {
                 if (config.txrx_delimiter == RS232_INTERSPCACE_SPACE)
                     cli_trace(" ");
@@ -312,10 +340,16 @@ int main()
                     cli_trace("\r\n");
             }
 
-            cli_rs232_trace(uart_type, config.trace_type, rx_buff, rx_len);
+            cli_rs232_trace(uart_type, config.trace_type, &rx_buff[lin_break], rx_len - lin_break, lin_break);
         }
 
-        if (!error_displayed) {
+        bool error_changed = (prev_rs232_tx_error != uart_flags[BSP_UART_TYPE_RS232_TX].error) || 
+                             (prev_rs232_rx_error != uart_flags[BSP_UART_TYPE_RS232_RX].error);
+
+        prev_rs232_tx_error = uart_flags[BSP_UART_TYPE_RS232_TX].error;
+        prev_rs232_rx_error = uart_flags[BSP_UART_TYPE_RS232_RX].error;
+
+        if (!error_displayed || error_changed) {
             error_displayed = true;
             char err_tx_str[3] = {0};
             char err_rx_str[3] = {0};

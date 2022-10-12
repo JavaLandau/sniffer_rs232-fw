@@ -27,6 +27,7 @@ struct uart_presettings {
     enum uart_wordlen wordlen;
     enum uart_parity parity;
     enum uart_stopbits stopbits;
+    bool lin_enabled;
 };
 
 #pragma pack(1)
@@ -46,7 +47,8 @@ struct flash_config {
     .parity = BSP_UART_PARITY_NONE,\
     .baudrate = 0,\
     .stopbits = BSP_UART_STOPBITS_1,\
-    .wordlen = BSP_UART_WORDLEN_8\
+    .wordlen = BSP_UART_WORDLEN_8,\
+    .lin_enabled = false\
 }
 
 #define FLASH_CONFIG_DEFAULT()  {\

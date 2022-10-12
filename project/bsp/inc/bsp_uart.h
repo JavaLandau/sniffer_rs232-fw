@@ -46,11 +46,13 @@ struct uart_init_ctx {
     uint32_t baudrate;
     uint32_t tx_size;
     uint32_t rx_size;
+    bool lin_enabled;
     enum uart_wordlen wordlen;
     enum uart_parity parity;
     enum uart_stopbits stopbits;
     void (*error_isr_cb)(enum uart_type type, uint32_t error, void *params);
     void (*overflow_isr_cb)(enum uart_type type, void *params);
+    void (*lin_break_isr_cb)(enum uart_type type, void *params);
     void *params;
 };
 
@@ -61,5 +63,6 @@ uint8_t bsp_uart_write(enum uart_type type, uint8_t *data, uint16_t len, uint32_
 uint8_t bsp_uart_start(enum uart_type type);
 uint8_t bsp_uart_stop(enum uart_type type);
 bool bsp_uart_is_started(enum uart_type type);
+bool bsp_uart_rx_queue_is_empty(enum uart_type type);
 
 #endif //__BSP_UART_H__
