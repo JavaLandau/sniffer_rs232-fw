@@ -13,7 +13,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define APP_VERSION             "1.0-RC2"
+#define APP_VERSION             "1.0-RC3"
 
 #define UART_RX_BUFF            (256)
 #define IS_UART_ERROR(X)        (uart_flags[X].error || uart_flags[X].overflow)

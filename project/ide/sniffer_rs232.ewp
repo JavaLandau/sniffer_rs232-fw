@@ -2131,6 +2131,9 @@
             <name>$PROJ_DIR$\..\application\src\app_led.c</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\application\src\basic_interrupts.c</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\application\src\cli.c</name>
         </file>
         <file>
@@ -2144,9 +2147,6 @@
         </file>
         <file>
             <name>$PROJ_DIR$\..\application\src\sniffer_rs232.c</name>
-        </file>
-        <file>
-            <name>$PROJ_DIR$\..\application\src\stm32f4xx_it.c</name>
         </file>
     </group>
     <group>

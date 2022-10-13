@@ -1,49 +1,34 @@
 #include "stm32f4xx_hal.h"
-#include "stm32f4xx_it.h"
+#include "bsp_led_rgb.h"
 
 void NMI_Handler(void)
 {
-  while (1)
-  {
-  }
+    BSP_LED_RGB_HARDFAULT();
 }
 
 void HardFault_Handler(void)
 {
-  while (1)
-  {
-  }
+    BSP_LED_RGB_HARDFAULT();
 }
 
 void MemManage_Handler(void)
 {
-  while (1)
-  {
-  }
+    BSP_LED_RGB_HARDFAULT();
 }
 
 void BusFault_Handler(void)
 {
-  while (1)
-  {
-  }
+    BSP_LED_RGB_HARDFAULT();
 }
 
-/**
-  * @brief This function handles Undefined instruction or illegal state.
-  */
 void UsageFault_Handler(void)
 {
-  while (1)
-  {
-  }
+    BSP_LED_RGB_HARDFAULT();
 }
-
 
 void SVC_Handler(void)
 {
 }
-
 
 void DebugMon_Handler(void)
 {
@@ -55,5 +40,5 @@ void PendSV_Handler(void)
 
 void SysTick_Handler(void)
 {
-  HAL_IncTick();
+    HAL_IncTick();
 }

@@ -17,4 +17,12 @@
 
 #define IS_PRINTABLE(X)     (X >= ' ' && X <= '~')
 
+#define INSTR_DELAY_US(DELAY)   \
+        do {\
+            __IO uint32_t clock_delay = DELAY * (HAL_RCC_GetSysClockFreq() / 8 / 1000000);\
+            do {\
+                __NOP();\
+            } while (--clock_delay);\
+        } while (0)
+
 #endif

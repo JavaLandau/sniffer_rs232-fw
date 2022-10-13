@@ -52,14 +52,6 @@ static uint16_t lcd1602_data_pins[] = {GPIO_PIN_15, GPIO_PIN_14, GPIO_PIN_13, GP
 
 static struct lcd1602_settings settings;
 
-static void __lc1602_delay_us(uint32_t delay_us)
-{
-    __IO uint32_t clock_delay = delay_us * (HAL_RCC_GetSysClockFreq() / 8 / 1000000);
-    do {
-        __NOP();
-    } while (--clock_delay);
-}
-
 static uint8_t __lcd1602_read_write(uint8_t *data, uint8_t type_reg, uint8_t type_mode)
 {
     if (!data)
@@ -90,7 +82,7 @@ static uint8_t __lcd1602_read_write(uint8_t *data, uint8_t type_reg, uint8_t typ
 
     /* Set Enable pin */
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, GPIO_PIN_SET);
-    __lc1602_delay_us(1);
+    INSTR_DELAY_US(1);
 
     if (type_mode == LCD1602_READ_MODE) {
         bsp_gpio_bulk_read(GPIOC, lcd1602_data_pins, &data_u16);
@@ -99,7 +91,7 @@ static uint8_t __lcd1602_read_write(uint8_t *data, uint8_t type_reg, uint8_t typ
 
     /* Reset Enable pin */
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, GPIO_PIN_RESET);
-    __lc1602_delay_us(2);
+    INSTR_DELAY_US(2);
 
     /* Come back to read mode if necessary */
     if (type_mode == LCD1602_WRITE_MODE) {
