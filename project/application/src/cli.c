@@ -1,3 +1,12 @@
+/**
+\file
+\author JavaLandau
+\copyright MIT License
+\brief Command line interface
+
+The file includes API to communicate with the device via CLI
+*/
+
 #include "cli.h"
 #include "menu.h"
 #include "config.h"
@@ -9,63 +18,133 @@
 #include <stdarg.h>
 #include <ctype.h>
 
+/** 
+ * \defgroup cli CLI
+ * \brief Command line interface
+ * \ingroup application
+ * @{
+*/
+
+/// Size of string buffer used in \ref cli_trace
 #define UART_TRACE_BUFF_SIZE    (256)
+
+/// Size of UART receive buffer for CLI \ref bsp_uart
 #define UART_RX_BUFF_SIZE       (256)
+
+/// Size of UART send buffer for CLI \ref bsp_uart
 #define UART_TX_BUFF_SIZE       (6 * UART_RX_BUFF_SIZE)
 
+/// Color of traced RS-232 TX data
 #define TX_COLOR           MENU_COLOR_GREEN
+
+/// Color of traced RS-232 RX data
 #define RX_COLOR           MENU_COLOR_MAGENTA
 
+/// State of UART CLI
 static struct {
-    bool uart_error;
-    bool uart_overflow;
+    bool uart_error;            ///< Flag whether UART errors on CLI occured
+    bool uart_overflow;         ///< Flag whether UART receive buffer is overflown
 } cli_state = {0};
 
+/// Copy of input configuration
 static struct flash_config old_config;
+
+/// Current configuration
 static struct flash_config *flash_config = NULL;
+
+/// Flag whether configuration is changed
 static bool is_config_changed = false;
 
+/// Menu color settings for menus wihtout emphasised choice "yes-no"
 static struct menu_color_config color_config_select = MENU_COLOR_CONFIG_DEFAULT();
+
+/// Menu color settings for menus with emphasised choice "yes-no"
 static struct menu_color_config color_config_choose = {.active = {.foreground = MENU_COLOR_YELLOW, .background = MENU_COLOR_RED},
                                                        .inactive = {.foreground = MENU_COLOR_WHITE, .background = MENU_COLOR_BLUE}};
 
+/** Menu entry
+ * 
+ * \param[in] input NOT used
+ * \param[in] param NOT used
+ * \return \ref RES_OK on success error otherwise
+ */
 static uint8_t __cli_menu_entry(char *input, void *param);
+
+/** Set configuration to defaults
+ * 
+ * The callback for menu item "Algorithm->Defaults" resets configuration \ref flash_config
+ * 
+ * \param[in] input NOT used
+ * \param[in] param NOT used
+ * \return \ref RES_OK on success error otherwise
+ */
 static uint8_t __cli_menu_set_defaults(char *input, void *param);
+
+/** Menu exit
+ * 
+ * The callback for menu item "Configuration->Start" executes exit from menu
+ * 
+ * \param[in] input NOT used
+ * \param[in] param NOT used
+ * \return \ref RES_OK on success error otherwise
+ */
 static uint8_t __cli_menu_exit(char *input, void *param);
+
+/** Configuration set by menu action
+ * 
+ * The callback executes set of configuration according to chosen menu item and  
+ * changed value of menu item and update appropriate menu items
+ * 
+ * \param[in] input NOT used
+ * \param[in] param NOT used
+ * \return \ref RES_OK on success error otherwise
+ */
 static uint8_t __cli_menu_cfg_set(char *input, void *param);
 
+/** Prompt generator
+ * 
+ * The function generates prompt by label of menu item
+ * 
+ * \param[in] menu_item_label label of menu item
+ * \return prompt of menu item, NULL if menu item does NOT have a prompt
+ */
 static char * __cli_prompt_generator(const char *menu_item_label);
 
-static char *rs232_trace_type_str[] = {
+/// Array of string aliases for \ref rs232_trace_type for output purposes
+static const char *rs232_trace_type_str[] = {
     "HEX",
     "HEX/ASCII",
     "INVALID"
 };
 
-static char *rs232_interspace_type_str[] = {
+/// Array of string aliases for \ref rs232_interspace_type for output purposes
+static const char *rs232_interspace_type_str[] = {
     "NONE",
     "SPACE",
     "NEW LINE",
     "INVALID"
 };
 
-static char *uart_parity_str[] = {
+/// Array of string aliases for \ref uart_parity for output purposes
+static const char *uart_parity_str[] = {
     "NONE",
     "EVEN",
     "ODD",
     "INVALID"
 };
 
-static char *rs232_channel_type_str[] = {
+/// Array of string aliases for \ref rs232_channel_type for output purposes
+static const char *rs232_channel_type_str[] = {
     "TX",
     "RX",
     "ANY",
     "ALL"
 };
 
-static struct {
-    char *label;
-    struct menu_color_config *color_config;
+/// List of menus included in configuration menu
+static const struct {
+    char *label;                                        ///< Label of menu
+    struct menu_color_config *color_config;             ///< Color settings of menu
 } init_menus[] = {
     {"MAIN MENU",           &color_config_select},
     {"CONFIGURATION",       &color_config_select},
@@ -86,12 +165,13 @@ static struct {
     {"PRESETTINGS ENABLE",  &color_config_choose},
 };
 
-static struct {
-    char *menu_label;
-    char *menu_item_label;
-    char *value_border;
-    uint8_t (*callback) (char *input, void *param);
-    char *menu_entry_label;
+/// Structure of all menu items included in configuration menu
+static const struct {
+    char *menu_label;                                   ///< Label of menu which menu item belongs to
+    char *menu_item_label;                              ///< Label of menu item
+    char *value_border;                                 ///< Border for value of menu item
+    uint8_t (*callback) (char *input, void *param);     ///< User callback by actions on menu item
+    char *menu_entry_label;                             ///< Label of menu to which user can enter from menu item
 } init_menu_items[] = {
     {"MAIN MENU", "Configuration", NULL, __cli_menu_entry, "CONFIGURATION"},
     {"MAIN MENU", "Presettings", "[]", __cli_menu_entry, "PRESETTINGS"},
@@ -152,8 +232,10 @@ static struct {
     {"SAVE CONFIGURATION", "NO", NULL, __cli_menu_exit, NULL},
 };
 
+/// Receive buffer for CLI \ref bsp_uart
 static uint8_t *__menu_rx_buff = NULL;
 
+/* Prompt generator, see prototype for details */
 static char *__cli_prompt_generator(const char *menu_item_label)
 {
     if (!menu_item_label)
@@ -187,11 +269,13 @@ static char *__cli_prompt_generator(const char *menu_item_label)
     return prompt;
 }
 
+/* Menu entry, see prototype for details */
 static uint8_t __cli_menu_entry(char *input, void *param)
 {
     return menu_entry(NULL);
 }
 
+/* Menu exit, see prototype for details */
 static uint8_t __cli_menu_exit(char *input, void *param)
 {
     struct menu_item *menu_item = menu_current_item_get();
@@ -216,6 +300,14 @@ static uint8_t __cli_menu_exit(char *input, void *param)
     return RES_OK;
 }
 
+/** Set values of menu items
+ * 
+ * The function sets values for all menu items within configuration menu  
+ * according to data from \p config
+ * 
+ * \param[in] config configuration
+ * \return \ref RES_OK on success error otherwise
+*/
 static uint8_t __cli_menu_cfg_values_set(struct flash_config *config)
 {
     if (!config)
@@ -283,6 +375,7 @@ static uint8_t __cli_menu_cfg_values_set(struct flash_config *config)
     return RES_OK;
 }
 
+/* Set configuration to defaults, see prototype for details */
 static uint8_t __cli_menu_set_defaults(char *input, void *param)
 {
     struct flash_config def_config = FLASH_CONFIG_DEFAULT();
@@ -296,6 +389,7 @@ static uint8_t __cli_menu_set_defaults(char *input, void *param)
     return RES_OK;
 }
 
+/* Configuration set by menu action, see prototype for details */
 static uint8_t __cli_menu_cfg_set(char *input, void *param)
 {
     if (!flash_config)
@@ -420,17 +514,40 @@ static uint8_t __cli_menu_cfg_set(char *input, void *param)
     return RES_OK;
 }
 
+/** Callback for CLI UART overflow
+ * 
+ * Callback is called from \ref bsp_uart when overflow of RX buffer is occured
+ * 
+ * \param[in] type UART type, should be \ref BSP_UART_TYPE_CLI
+ * \param[in] params optional parameters
+ */
 static void __cli_uart_overflow_cb(enum uart_type type, void *params)
 {
     cli_state.uart_overflow = true;
 }
 
+/** Callback for CLI UART errors
+ * 
+ * Callback is called from \ref bsp_uart when UART errors are occured on CLI  
+ * BSP UART of CLI will be restarted
+ * 
+ * \param[in] type UART type, should be \ref BSP_UART_TYPE_CLI
+ * \param[in] error mask of occured UART errors
+ * \param[in] params optional parameters
+ */
 static void __cli_uart_error_cb(enum uart_type type, uint32_t error, void *params)
 {
     cli_state.uart_error = true;
     bsp_uart_start(type);
 }
 
+/** Callback to write into console
+ * 
+ * The callback is used by \ref menu to write data into console
+ * 
+ * \param[in] data written data
+ * \return \ref RES_OK on success error otherwise
+ */
 static uint8_t __cli_menu_write_cb(char *data)
 {
     if (!data)
@@ -442,6 +559,13 @@ static uint8_t __cli_menu_write_cb(char *data)
     return bsp_uart_write(BSP_UART_TYPE_CLI, (uint8_t*)data, strlen(data), 1000);
 }
 
+/** Callback to read from console
+ * 
+ * The callback is used by \ref menu to read data from console
+ * 
+ * \param[out] data read data
+ * \return \ref RES_OK on success error otherwise
+ */
 static uint8_t __cli_menu_read_cb(char **data)
 {
     if (!data)
@@ -458,6 +582,7 @@ static uint8_t __cli_menu_read_cb(char **data)
     return res;
 }
 
+/* Configuration menu exit, see header file for details */
 uint8_t cli_menu_exit(void)
 {
     if (flash_config)
@@ -466,11 +591,13 @@ uint8_t cli_menu_exit(void)
     return menu_exit();
 }
 
+/* Check whether configuration menu is started, see header file for details */
 bool cli_menu_is_started(void)
 {
     return menu_is_started();
 }
 
+/* CLI initialization, see header file for details */
 uint8_t cli_init(void)
 {
     memset(&cli_state, 0, sizeof(cli_state));
@@ -494,7 +621,7 @@ uint8_t cli_init(void)
     return bsp_uart_init(BSP_UART_TYPE_CLI, &uart_init);
 }
 
-
+/* Trace into CLI, see header file for details */
 void cli_trace(const char *format, ...)
 {
     static char buffer[UART_TRACE_BUFF_SIZE] = {0};
@@ -510,6 +637,7 @@ void cli_trace(const char *format, ...)
     va_end(args);
 }
 
+/* Welcome routine, see header file for details */
 uint8_t cli_welcome(const char *welcome, uint8_t wait_time_s, bool *forced_exit, bool *is_pressed)
 {
     uint32_t buff_size = welcome ? strnlen(welcome, MENU_MAX_STR_LEN) : 0;
@@ -549,6 +677,7 @@ uint8_t cli_welcome(const char *welcome, uint8_t wait_time_s, bool *forced_exit,
     return RES_OK;
 }
 
+/* Reset settings of console, see header file for details */
 void cli_terminal_reset(void)
 {
     cli_trace(MENU_COLOR_RESET);
@@ -556,6 +685,7 @@ void cli_terminal_reset(void)
     cli_trace(MENU_RETURN_HOME);
 }
 
+/* Menu configuration start, see header file for details */
 uint8_t cli_menu_start(struct flash_config *config)
 {
     if (!config)
@@ -617,6 +747,7 @@ uint8_t cli_menu_start(struct flash_config *config)
     return RES_OK;
 }
 
+/* Trace of monitored RS-232 data, see header file for details */
 uint8_t cli_rs232_trace(enum uart_type uart_type,
                         enum rs232_trace_type trace_type,
                         uint8_t *data,
@@ -682,3 +813,5 @@ uint8_t cli_rs232_trace(enum uart_type uart_type,
 
     return res;
 }
+
+/** @} */

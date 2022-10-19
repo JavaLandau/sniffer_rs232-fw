@@ -1,15 +1,33 @@
+/**
+\file
+\author JavaLandau
+\copyright MIT License
+\brief Flash configuration
+
+The file includes API to save/load configuration into/from internal MPU flash
+*/
+
 #include "config.h"
 #include "bsp_crc.h"
 #include <string.h>
 
+/** 
+ * \defgroup config Configuration
+ * \brief Module of firmware configuration stored in internal flash
+ * \ingroup application
+ * @{
+*/
+
+/// Address of internal flash where configuration is stored
 #define FLASH_SECTOR_CFG_ADDR   (0x08060000)
 
+/* Save configuration, see header file for details */
 uint8_t config_save(struct flash_config *config)
 {
     if (!config)
         return RES_INVALID_PAR;
 
-    // CRC calculation
+    /* CRC calculation */
     uint32_t crc = 0;
     uint8_t res = bsp_crc_calc((uint8_t*)config, sizeof(struct flash_config) - sizeof(uint32_t), &crc);
 
@@ -18,7 +36,7 @@ uint8_t config_save(struct flash_config *config)
 
     config->crc = crc;
 
-    // Erase necessary sectors of INT FLASH
+    /* Erase necessary sectors of INT FLASH */
     uint32_t sec_error = 0;
 
     FLASH_EraseInitTypeDef erase_init;
@@ -41,7 +59,7 @@ uint8_t config_save(struct flash_config *config)
             break;
         }
 
-        // Write into INT FLASH
+        /* Write into INT FLASH */
         uint32_t size = sizeof(struct flash_config);
         uint8_t size_tail = size % sizeof(uint32_t);
         uint8_t *p_config = (uint8_t*)config;
@@ -83,16 +101,17 @@ uint8_t config_save(struct flash_config *config)
     return res;
 }
 
+/* Read configuration, see header file for details */
 uint8_t config_read(struct flash_config *config)
 {
     if (!config)
         return RES_INVALID_PAR;
 
-    // Read from flash
+    /* Read from flash */
     uint32_t int_addr = FLASH_SECTOR_CFG_ADDR;
     memcpy((uint8_t*)config, (uint8_t*)int_addr, sizeof(struct flash_config));
 
-    // CRC check
+    /* CRC check */
     uint32_t crc = 0;
     uint8_t res = bsp_crc_calc((uint8_t*)config, sizeof(struct flash_config) - sizeof(uint32_t), &crc);
 
@@ -104,3 +123,5 @@ uint8_t config_read(struct flash_config *config)
 
     return RES_OK;
 }
+
+/** @} */

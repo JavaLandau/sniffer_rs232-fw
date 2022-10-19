@@ -1,3 +1,13 @@
+/**
+\file
+\author JavaLandau
+\copyright MIT License
+\brief Main project file
+
+The file includes main routine of the firmware: start menu of configuration,  
+algorithm usage, error handlers and etc.
+*/
+
 #include "common.h"
 #include "stm32f4xx_hal.h"
 #include "app_led.h"
@@ -13,22 +23,54 @@
 #include <stdio.h>
 #include <string.h>
 
+/** 
+ * \defgroup application Application
+ * \brief Application layer of the firmware
+*/
+
+/** 
+ * \defgroup main Main
+ * \brief Firmware main routine
+ * \ingroup application
+ * @{
+*/
+
+/// Firmware version
 #define APP_VERSION             "1.0-RC3"
 
+/// Size of RX buffer to store data received from \ref bsp_uart
 #define UART_RX_BUFF            (256)
+
+/** MACRO Flag whether UART errors occured
+ * 
+ * \param[in] X type of UART, see \ref uart_type
+ * \result true if some errors took place, false otherwise
+*/
 #define IS_UART_ERROR(X)        (uart_flags[X].error || uart_flags[X].overflow)
 
-static char uart_parity_sym[] = {'N', 'E', 'O'};
-static char *display_uart_type_str[] = {"CLI", "TX", "RX"};
+/// Array of char aliases for \ref uart_parity for output purposes
+static const char uart_parity_sym[] = {'N', 'E', 'O'};
 
+/// Array of string aliases for \ref uart_type for output purposes
+static const char *display_uart_type_str[] = {"CLI", "TX", "RX"};
+
+/// Flag whether press event on the button is occured
 static bool press_event = false;
 
+///UART flags
 static struct {
-    uint32_t error;
-    bool overflow;
-    bool lin_break;
+    uint32_t error;                     ///< Mask of UART errors
+    bool overflow;                      ///< Flag whether UART RX buffer is overflown before call \ref bsp_uart_read
+    bool lin_break;                     ///< Flag whether LIN break detection is occured
 } uart_flags[BSP_UART_TYPE_MAX] = {0};
 
+/** Callback for UART LIN break detection
+ * 
+ * Callback is called from \ref bsp_uart when LIN break is detected
+ * 
+ * \param[in] type UART type
+ * \param[in] params optional parameters
+ */
 static void uart_lin_break_cb(enum uart_type type, void *params)
 {
     if (!UART_TYPE_VALID(type))
@@ -37,6 +79,13 @@ static void uart_lin_break_cb(enum uart_type type, void *params)
     uart_flags[type].lin_break = true;
 }
 
+/** Callback for UART overflow
+ * 
+ * Callback is called from \ref bsp_uart when overflow of RX buffer is occured
+ * 
+ * \param[in] type UART type
+ * \param[in] params optional parameters
+ */
 static void uart_overflow_cb(enum uart_type type, void *params)
 {
     if (!UART_TYPE_VALID(type))
@@ -45,6 +94,14 @@ static void uart_overflow_cb(enum uart_type type, void *params)
     uart_flags[type].overflow = true;
 }
 
+/** Callback for UART errors
+ * 
+ * Callback is called from \ref bsp_uart when UART errors are occured
+ * 
+ * \param[in] type UART type
+ * \param[in] error mask of occured UART errors
+ * \param[in] params optional parameters
+ */
 static void uart_error_cb(enum uart_type type, uint32_t error, void *params)
 {
     if (!UART_TYPE_VALID(type))
@@ -53,6 +110,20 @@ static void uart_error_cb(enum uart_type type, uint32_t error, void *params)
     uart_flags[type].error |= error;
 }
 
+/** Callback for button actions
+ * 
+ * Callback is called from \ref bsp_button when actions on  
+ * the button are occured. Algorithm of the callback is the following:
+ * 
+ * 1. Action \ref BUTTON_PRESSED occured:  
+ * If menu is started or waiting to be started - skip menu start  
+ * otherwise - start/stop toggle of UART reception from RS-232 channels
+ * 
+ * 2. Action \ref BUTTON_LONG_PRESSED  
+ * Software reset of the chip in any cases
+ * 
+ * \param[in] action BUTTON action, see \ref button_action
+ */
 static void button_cb(enum button_action action)
 {
     switch(action) {
@@ -71,6 +142,14 @@ static void button_cb(enum button_action action)
     }
 }
 
+/** Wait for press event
+ * 
+ * The function waits when \ref BUTTON_PRESSED occured, using \ref press_event  
+ * \ref press_event is cleared if was set
+ * 
+ * \param[in] tmt timeout in ms for event waiting
+ * \return true if event occured, false otherwise
+ */
 static bool button_wait_event(uint32_t tmt)
 {
     bool __press_event = false;
@@ -87,6 +166,14 @@ static bool button_wait_event(uint32_t tmt)
     return __press_event;
 }
 
+/** Routine for internal error
+ * 
+ * The function calls when occured errors on the firmware  
+ * do not let it working further. The function uses politics of LED signaling
+ * \warning The function is firmware dead end and reset is needed to start firmware
+ * 
+ * \param[in] led_event politics of LED signaling
+ */
 static void internal_error(enum led_event led_event)
 {
     app_led_set(led_event);
@@ -94,13 +181,19 @@ static void internal_error(enum led_event led_event)
     while(1);
 }
 
+/** Main routine of the firmware 
+ * 
+ * \return NOT used
+*/
 int main()
 {
+    /* Basic initialization */
     HAL_Init();
 
     if (bsp_rcc_main_config_init() != RES_OK)
         HAL_NVIC_SystemReset();
 
+    /* BSP LED & CRC initialization */
     uint8_t res = app_led_init();
 
     if (res != RES_OK)
@@ -111,6 +204,7 @@ int main()
     if (res != RES_OK)
         internal_error(LED_EVENT_CRC_ERROR);
 
+    /* Read/initialization of the device configuration from internal flash */
     struct flash_config config;
 
     if (config_read(&config) != RES_OK) {
@@ -122,6 +216,7 @@ int main()
             internal_error(LED_EVENT_FLASH_ERROR);
     }
 
+    /* LCD1602 initialization */
     struct lcd1602_settings settings = {
         .num_line = LCD1602_NUM_LINE_2,
         .font_size = LCD1602_FONT_SIZE_5X8,
@@ -138,6 +233,7 @@ int main()
     if (res != RES_OK)
         internal_error(LED_EVENT_LCD1602_ERROR);
 
+    /* Button initialization */
     struct button_init_ctx button_init_ctx = {
         .press_delay_ms = 500,
         .press_min_dur_ms = 70,
@@ -152,6 +248,7 @@ int main()
         internal_error(LED_EVENT_COMMON_ERROR);
     }
 
+    /* Initialization of CLI */
     res = cli_init();
 
     if (res != RES_OK) {
@@ -161,6 +258,7 @@ int main()
 
     cli_terminal_reset();
 
+    /* Welcome stage */
     bsp_lcd1602_cprintf("SNIFFER RS-232", "V.%s", APP_VERSION);
 
     cli_trace("**********************************************************\r\n");
@@ -176,6 +274,7 @@ int main()
     press_event = false;
     bsp_lcd1602_display_clear();
 
+    /* Stage of configuration menu */
     if (is_pressed) {
         bsp_lcd1602_cprintf("CONFIGURATION", NULL);
 
@@ -200,6 +299,7 @@ int main()
     struct uart_init_ctx uart_params = {0};
     bool presettings_enabled = config.presettings.enable;
 
+    /* Algorithm stage */
     while (!uart_params.baudrate) {
         if (!config.presettings.enable) {
             app_led_set(LED_EVENT_IN_PROCESS);
@@ -247,6 +347,7 @@ int main()
         }
     }
 
+    /* Monitoring stage */
     app_led_set(LED_EVENT_SUCCESS);
     cli_trace("Start to monitoring...\r\n");
 
@@ -289,6 +390,7 @@ int main()
 
     bsp_lcd1602_cprintf(NULL, "%s", started ? "STARTED" : "STOPPED");
 
+    /* Routine of the monitoring */
     while (true) {
         if (button_wait_event(0)) {
             if (error_displayed) {
@@ -316,7 +418,7 @@ int main()
             continue;
 
         for (enum uart_type type = BSP_UART_TYPE_CLI; type < BSP_UART_TYPE_MAX; type++) {
-            if (!bsp_uart_is_started(type) && bsp_uart_rx_queue_is_empty(type))
+            if (!bsp_uart_is_started(type) && bsp_uart_rx_buffer_is_empty(type))
                 bsp_uart_start(type);
         }
 
@@ -388,3 +490,5 @@ int main()
         uart_type = (uart_type == BSP_UART_TYPE_RS232_TX) ? BSP_UART_TYPE_RS232_RX : BSP_UART_TYPE_RS232_TX;
     }
 }
+
+/** @} */

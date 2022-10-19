@@ -1,7 +1,24 @@
+/**
+\file
+\author JavaLandau
+\copyright MIT License
+\brief BSP RCC module
+
+The file includes implementation of BSP layer of the RCC
+*/
+
 #include "common.h"
 #include "bsp_rcc.h"
 #include "stm32f4xx_ll_rcc.h"
 
+/** 
+ * \defgroup bsp_rcc BSP RCC
+ * \brief Module of BSP RCC
+ * \ingroup bsp
+ * @{
+*/
+
+/* Configuration of main clocks, see header file for details */
 uint8_t bsp_rcc_main_config_init(void)
 {
     RCC_OscInitTypeDef RCC_OscInitStruct = {0};
@@ -40,6 +57,7 @@ uint8_t bsp_rcc_main_config_init(void)
     return RES_OK;
 }
 
+/* Get frequency of TIM internal clock, see header file for details */
 uint32_t bsp_rcc_apb_timer_freq_get(TIM_TypeDef *instance)
 {
     if (!IS_TIM_INSTANCE(instance))
@@ -56,3 +74,5 @@ uint32_t bsp_rcc_apb_timer_freq_get(TIM_TypeDef *instance)
 
     return tim_freq;
 }
+
+/** @} */

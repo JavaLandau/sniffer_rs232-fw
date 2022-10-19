@@ -1,3 +1,12 @@
+/**
+\file
+\author JavaLandau
+\copyright MIT License
+\brief BSP UART module
+
+The file includes implementation of BSP layer of the UART
+*/
+
 #include "common.h"
 #include "bsp_uart.h"
 #include <stdlib.h>
@@ -5,29 +14,77 @@
 #include <stdbool.h>
 #include "stm32f4xx_ll_usart.h"
 
+/** 
+ * \defgroup bsp BSP
+ * \brief Board suppport package
+*/
+
+/** 
+ * \defgroup bsp_uart BSP UART
+ * \brief Module of BSP UART
+ * \ingroup bsp
+ * @{
+*/
+
+/** MACRO BSP UART word length typecasting
+ * 
+ * The macro makes typecasting of \ref uart_wordlen to STM32 HAL UART word length
+ * 
+ * \param[in] X BSP UART word length
+ * \return STM32 HAL UART word length
+*/
 #define HAL_UART_WORDLEN_TO(X)     (((X) == BSP_UART_WORDLEN_8) ? UART_WORDLENGTH_8B : UART_WORDLENGTH_9B)
+
+/** MACRO BSP UART stop bits count typecasting
+ * 
+ * The macro makes typecasting of \ref uart_stopbits to STM32 HAL UART stop bits count
+ * 
+ * \param[in] X BSP UART stop bits count
+ * \return STM32 HAL UART stop bits count
+*/
 #define HAL_UART_STOPBITS_TO(X)    (((X) == BSP_UART_STOPBITS_1) ? UART_STOPBITS_1 : UART_STOPBITS_2)
+
+/** MACRO BSP UART parity type typecasting
+ * 
+ * The macro makes typecasting of \ref uart_parity to STM32 HAL UART parity type
+ * 
+ * \param[in] X BSP UART parity type
+ * \return STM32 HAL UART parity type
+*/
 #define HAL_UART_PARITY_TO(X)      (((X) == BSP_UART_PARITY_NONE) ? UART_PARITY_NONE : \
                                     (((X) == BSP_UART_PARITY_EVEN) ? UART_PARITY_EVEN : UART_PARITY_ODD))
 
+/// Context of the BSP UART instance
 struct uart_ctx {
-    struct uart_init_ctx init;
-    uint8_t *tx_buff;
-    uint8_t *rx_buff;
-    uint16_t rx_idx_get;
-    uint16_t rx_idx_set;
+    struct uart_init_ctx init;  ///< Initializing context of the instance
+    uint8_t *tx_buff;           ///< Sent buffer used by DMA TX
+    uint8_t *rx_buff;           ///< Received buffer used by DMA RX
+    uint16_t rx_idx_get;        ///< Read poisition in \ref rx_buff used as ring buffer
+    uint16_t rx_idx_set;        ///< Write poisition in \ref rx_buff used as ring buffer
+    bool frame_error;           ///< Flag whetner UART frame error is occured, used to separate LIN break from other frame errors
 };
 
+/** Array of BSP UART instances
+ * 
+ * Includes three instances:  
+ * \ref BSP_UART_TYPE_CLI       - CLI using STM32 UART4 TX/RX  
+ * \ref BSP_UART_TYPE_RS232_TX  - RS-232 TX channel using STM32 USART2 RX  
+ * \ref BSP_UART_TYPE_RS232_RX  - RS-232 RX channel using STM32 USART3 RX
+*/
 static struct {
-    UART_HandleTypeDef uart;
-    struct uart_ctx *ctx;
-    bool frame_error;
+    UART_HandleTypeDef uart;    ///< STM32 HAL UART instance
+    struct uart_ctx *ctx;       ///< Context of the instance
 } uart_obj[BSP_UART_TYPE_MAX] = {
-    {.uart = {.Instance = UART4}, .ctx = NULL, .frame_error = false},
-    {.uart = {.Instance = USART2}, .ctx = NULL, .frame_error = false},
-    {.uart = {.Instance = USART3}, .ctx = NULL, .frame_error = false}
+    {.uart = {.Instance = UART4}, .ctx = NULL},
+    {.uart = {.Instance = USART2}, .ctx = NULL},
+    {.uart = {.Instance = USART3}, .ctx = NULL}
 };
 
+/** Get BSP UART type by STM32 HAL UART instance
+ * 
+ * \param[in] instance STM32 HAL UART instance
+ * \return BSP UART type on success \ref BSP_UART_TYPE_MAX otherwise
+ */
 static enum uart_type __uart_type_get(USART_TypeDef *instance)
 {
     if (instance == UART4)
@@ -40,6 +97,13 @@ static enum uart_type __uart_type_get(USART_TypeDef *instance)
         return BSP_UART_TYPE_MAX;
 }
 
+/** STM32 DMA UART deinitialization
+ * 
+ * The function executes DMA TX/RX (according to BSP UART type) deinitialization
+ * 
+ * \param[in] type BSP UART type
+ * \return \ref RES_OK on success error otherwise
+ */
 static uint8_t __uart_dma_deinit(enum uart_type type)
 {
     if (!UART_TYPE_VALID(type) || !uart_obj[type].ctx)
@@ -85,6 +149,13 @@ static uint8_t __uart_dma_deinit(enum uart_type type)
     return RES_OK;
 }
 
+/** STM32 UART MSP deinitialization
+ * 
+ * The function executes GPIO, DMA deinitialization, disables corresponding clocks
+ * 
+ * \param[in] type BSP UART type
+ * \return \ref RES_OK on success error otherwise
+ */
 static uint8_t __uart_msp_deinit(enum uart_type type)
 {
     if (!UART_TYPE_VALID(type) || !uart_obj[type].ctx)
@@ -124,6 +195,13 @@ static uint8_t __uart_msp_deinit(enum uart_type type)
     return RES_OK;
 }
 
+/** STM32 DMA UART initialization
+ * 
+ * The function executes DMA TX/RX (according to BSP UART type) initialization
+ * 
+ * \param[in] type BSP UART type
+ * \return \ref RES_OK on success error otherwise
+ */
 static uint8_t __uart_dma_init(enum uart_type type)
 {
     if (!UART_TYPE_VALID(type) || !uart_obj[type].ctx)
@@ -135,6 +213,7 @@ static uint8_t __uart_dma_init(enum uart_type type)
     DMA_HandleTypeDef *hdma_tx = uart_obj[type].uart.hdmatx;
     DMA_HandleTypeDef *hdma_rx = uart_obj[type].uart.hdmarx;
 
+    /* Free DMA UART instance if was allocated */
     if (hdma_tx) {
         uart_obj[type].uart.hdmatx = NULL;
 
@@ -152,6 +231,7 @@ static uint8_t __uart_dma_init(enum uart_type type)
     uint8_t res = RES_OK;
     IRQn_Type irq_type;
 
+    /* DMA UART initialization */
     switch (type) {
     case BSP_UART_TYPE_CLI:
         hdma_tx = (DMA_HandleTypeDef*)malloc(sizeof(DMA_HandleTypeDef));
@@ -260,6 +340,7 @@ static uint8_t __uart_dma_init(enum uart_type type)
         break;
     }
 
+    /* If initialization failed free allocated DMA UART instances */
     if (res != RES_OK) {
         uart_obj[type].uart.hdmatx = NULL;
         uart_obj[type].uart.hdmarx = NULL;
@@ -274,6 +355,13 @@ static uint8_t __uart_dma_init(enum uart_type type)
     return RES_OK;
 }
 
+/** STM32 UART MSP initialization
+ * 
+ * The function executes GPIO, DMA initialization, enables corresponding clocks
+ * 
+ * \param[in] type BSP UART type
+ * \return \ref RES_OK on success error otherwise
+ */
 static uint8_t __uart_msp_init(enum uart_type type)
 {
     if (!UART_TYPE_VALID(type) || !uart_obj[type].ctx)
@@ -285,6 +373,7 @@ static uint8_t __uart_msp_init(enum uart_type type)
     if (__HAL_RCC_DMA1_IS_CLK_DISABLED())
         __HAL_RCC_DMA1_CLK_ENABLE();
 
+    /* GPIO, RCC, NVIC initialization */
     switch (type) {
     case BSP_UART_TYPE_CLI:
         if (__HAL_RCC_GPIOA_IS_CLK_DISABLED())
@@ -350,12 +439,23 @@ static uint8_t __uart_msp_init(enum uart_type type)
         break;
     }
 
+    /* If initialization was successfull 
+       do DMA UART initialization */
     if (res == RES_OK)
         res = __uart_dma_init(type);
 
     return RES_OK;
 }
 
+/** Callback by data reception
+ * 
+ * The function is called by STM32 HAL UART by idle detection if data was received  
+ * The function operates with write position of \ref uart_ctx::rx_buff, set overflow flag  
+ * if appropriate event is occured
+ * 
+ * \param[in] huart STM32 HAL UART instance
+ * \param[in] pos current write position of \ref uart_ctx::rx_buff
+*/
 static void __uart_rx_callback(UART_HandleTypeDef *huart, uint16_t pos)
 {
     if (!huart)
@@ -388,6 +488,14 @@ static void __uart_rx_callback(UART_HandleTypeDef *huart, uint16_t pos)
     }
 }
 
+/** Callback by BSP UART error
+ * 
+ * The function is called from \ref __uart_irq_handler when BSP UART error occured  
+ * The function is the wrapper over user callback \ref uart_init_ctx::error_isr_cb  
+ * 
+ * \param[in] type BSP UART type
+ * \param[in] error mask of occured BSP UART errors
+*/
 static void __uart_error_callback(enum uart_type type, uint32_t error)
 {
     if (!UART_TYPE_VALID(type))
@@ -399,6 +507,7 @@ static void __uart_error_callback(enum uart_type type, uint32_t error)
     }
 }
 
+/* BSP UART instance start, see header file for details */
 uint8_t bsp_uart_start(enum uart_type type)
 {
     if (!UART_TYPE_VALID(type))
@@ -407,7 +516,7 @@ uint8_t bsp_uart_start(enum uart_type type)
     if (uart_obj[type].ctx && uart_obj[type].ctx->rx_buff) {
         uart_obj[type].ctx->rx_idx_get = 0;
         uart_obj[type].ctx->rx_idx_set = 0;
-        uart_obj[type].frame_error = false;
+        uart_obj[type].ctx->frame_error = false;
 
         if (HAL_UARTEx_ReceiveToIdle_DMA(&uart_obj[type].uart, uart_obj[type].ctx->rx_buff, uart_obj[type].ctx->init.rx_size) != HAL_OK)
             return RES_NOK;
@@ -419,6 +528,7 @@ uint8_t bsp_uart_start(enum uart_type type)
     return RES_OK;
 }
 
+/* BSP UART instance stop, see header file for details */
 uint8_t bsp_uart_stop(enum uart_type type)
 {
     if (!UART_TYPE_VALID(type) || !uart_obj[type].ctx)
@@ -429,6 +539,7 @@ uint8_t bsp_uart_stop(enum uart_type type)
     return (hal_res == HAL_OK) ? RES_OK : RES_NOK;
 }
 
+/* Flag whether BSP UART instance is started, see header file for details */
 bool bsp_uart_is_started(enum uart_type type)
 {
     if (!UART_TYPE_VALID(type) || !uart_obj[type].ctx || !uart_obj[type].ctx->rx_buff)
@@ -440,6 +551,7 @@ bool bsp_uart_is_started(enum uart_type type)
     return status;
 }
 
+/* Send BSP UART data, see header file for details */
 uint8_t bsp_uart_write(enum uart_type type, uint8_t *data, uint16_t len, uint32_t tmt_ms)
 {
     if (!UART_TYPE_VALID(type) || !uart_obj[type].ctx || !uart_obj[type].ctx->tx_buff)
@@ -451,6 +563,7 @@ uint8_t bsp_uart_write(enum uart_type type, uint8_t *data, uint16_t len, uint32_
     if (len > uart_obj[type].ctx->init.tx_size)
         return RES_INVALID_PAR;
 
+    /* Wait when previous DMA UART sending is completed */
     uint8_t res = RES_TIMEOUT;
     uint32_t start_time = HAL_GetTick();
     while((HAL_GetTick() - start_time) < tmt_ms) {
@@ -474,7 +587,8 @@ uint8_t bsp_uart_write(enum uart_type type, uint8_t *data, uint16_t len, uint32_
     return RES_OK;
 }
 
-bool bsp_uart_rx_queue_is_empty(enum uart_type type)
+/* Flag whether received buffer is empty, see header file for details */
+bool bsp_uart_rx_buffer_is_empty(enum uart_type type)
 {
     if (!UART_TYPE_VALID(type))
         return true;
@@ -482,6 +596,7 @@ bool bsp_uart_rx_queue_is_empty(enum uart_type type)
     return (uart_obj[type].ctx->rx_idx_set == uart_obj[type].ctx->rx_idx_get);
 }
 
+/* Receive BSP UART data, see header file for details */
 uint8_t bsp_uart_read(enum uart_type type, uint8_t *data, uint16_t *len, uint32_t tmt_ms)
 {
     if (!UART_TYPE_VALID(type) || !uart_obj[type].ctx || !uart_obj[type].ctx->rx_buff)
@@ -526,6 +641,7 @@ uint8_t bsp_uart_read(enum uart_type type, uint8_t *data, uint16_t *len, uint32_
     return res;
 }
 
+/* Initialization of BSP UART instance, see header file for details */
 uint8_t bsp_uart_init(enum uart_type type, struct uart_init_ctx *init)
 {
     if (!UART_TYPE_VALID(type) || !init)
@@ -643,6 +759,7 @@ uint8_t bsp_uart_init(enum uart_type type, struct uart_init_ctx *init)
     return res;
 }
 
+/* Deinitialization of BSP UART instance, see header file for details */
 uint8_t bsp_uart_deinit(enum uart_type type)
 {
     if (!UART_TYPE_VALID(type))
@@ -677,32 +794,42 @@ uint8_t bsp_uart_deinit(enum uart_type type)
     return res;
 }
 
+/** UART IRQ handler
+ * 
+ * The function is called from NVIC UART interrupts, processes receiption,  
+ * errors and LIN break detection
+ * 
+ * \param[in] type BSP UART type
+ */
 static void __uart_irq_handler(enum uart_type type)
 {
-    if (!UART_TYPE_VALID(type))
+    if (!UART_TYPE_VALID(type) || !uart_obj[type].ctx)
         return;
 
     uint32_t error = 0;
     USART_TypeDef *instance = uart_obj[type].uart.Instance;
 
+    /* Process LIN break detection if enabled */
     if (LL_USART_IsEnabledLIN(instance) && LL_USART_IsEnabledIT_LBD(instance)) {
         if (LL_USART_IsActiveFlag_LBD(instance)) {
-            uart_obj[type].frame_error = false;
+            uart_obj[type].ctx->frame_error = false;
             LL_USART_ClearFlag_LBD(instance);
 
-            if (uart_obj[type].ctx && uart_obj[type].ctx->init.lin_break_isr_cb)
+            if (uart_obj[type].ctx->init.lin_break_isr_cb)
                 uart_obj[type].ctx->init.lin_break_isr_cb(type, uart_obj[type].ctx->init.params);
         }
 
-        if (uart_obj[type].frame_error) {
+        /* If after occured frame error LIN break is not detected 
+           generates frame error */
+        if (uart_obj[type].ctx->frame_error) {
             error = BSP_UART_ERROR_FE;
-            uart_obj[type].frame_error = false;
+            uart_obj[type].ctx->frame_error = false;
         } else {
             if (LL_USART_IsActiveFlag_FE(instance)) {
                 if (LL_USART_IsActiveFlag_RXNE(instance)) {
                     return;
                 } else {
-                    uart_obj[type].frame_error = true;
+                    uart_obj[type].ctx->frame_error = true;
                     LL_USART_ClearFlag_FE(instance);
                 }
             }
@@ -715,37 +842,46 @@ static void __uart_irq_handler(enum uart_type type)
         __uart_error_callback(type, (uart_obj[type].uart.ErrorCode & BSP_UART_ERRORS_ALL) | error);
 }
 
+/** NVIC UART4 IRQ handler */
 void UART4_IRQHandler(void)
 {
     __uart_irq_handler(BSP_UART_TYPE_CLI);
 }
 
+/** NVIC USART2 IRQ handler */
 void USART2_IRQHandler(void)
 {
     __uart_irq_handler(BSP_UART_TYPE_RS232_TX);
 }
 
+/** NVIC USART3 IRQ handler */
 void USART3_IRQHandler(void)
 {
     __uart_irq_handler(BSP_UART_TYPE_RS232_RX);
 }
 
+/** NVIC DMA1 (Stream 1) IRQ handler */
 void DMA1_Stream1_IRQHandler(void)
 {
     HAL_DMA_IRQHandler(uart_obj[BSP_UART_TYPE_RS232_RX].uart.hdmarx);
 }
 
+/** NVIC DMA1 (Stream 2) IRQ handler */
 void DMA1_Stream2_IRQHandler(void)
 {
     HAL_DMA_IRQHandler(uart_obj[BSP_UART_TYPE_CLI].uart.hdmarx);
 }
 
+/** NVIC DMA1 (Stream 4) IRQ handler */
 void DMA1_Stream4_IRQHandler(void)
 {
     HAL_DMA_IRQHandler(uart_obj[BSP_UART_TYPE_CLI].uart.hdmatx);
 }
 
+/** NVIC DMA1 (Stream 5) IRQ handler */
 void DMA1_Stream5_IRQHandler(void)
 {
     HAL_DMA_IRQHandler(uart_obj[BSP_UART_TYPE_RS232_TX].uart.hdmarx);
 }
+
+/** @} */

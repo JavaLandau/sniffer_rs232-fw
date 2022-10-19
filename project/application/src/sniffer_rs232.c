@@ -1,47 +1,101 @@
+/**
+\file
+\author JavaLandau
+\copyright MIT License
+\brief Algorithm of Sniffer RS-232
+
+The file includes recognizing algorithm of RS-232 parameters
+*/
+
 #include "sniffer_rs232.h"
 #include "bsp_gpio.h"
 #include "bsp_rcc.h"
 #include <stdbool.h>
 #include <string.h>
 
+/** 
+ * \defgroup sniffer_rs232 Algorithm of Sniffer RS-232
+ * \brief Module of recognizing algorithm of Sniffer RS-232
+ * 
+ * Algorithm consists of two parts:  
+ * 1. Baudrate part - when baudrate calculated in EXTI mode
+ * 2. Parameter part - when other UART parameters (word length, parity type) calculated in UART mode
+ * \ingroup application
+ * @{
+*/
+
+/// Size of buffers \ref tx_buffer & \ref rx_buffer
 #define BUFFER_SIZE             (512)
+
+/// Size of receive buffer used in \ref bsp_uart
 #define UART_BUFF_SIZE          (128)
+
+/** Minimal ratio between maximum and minimum widths of lower level  
+ * on the RS-232 lines to make decision about LIN break existence */
 #define LIN_BREAK_MIN_LEN       (10)
 
-static TIM_HandleTypeDef htim6 = {.Instance = TIM6};
+/** STM32 HAL TIM instance for timer used to count widths of lower level  
+ *  on the RS-232 lines */
+static TIM_HandleTypeDef alg_tim = {.Instance = TIM6};
+
+/** STM32 HAL EXTI instance used to detect falling & rising edges  
+ * of signals on the RS-232 TX line */
 static EXTI_HandleTypeDef hexti1 = {.Line = EXTI_LINE_3};
+
+/** STM32 HAL EXTI instance used to detect falling & rising edges  
+ * of signals on the RS-232 RX line */
 static EXTI_HandleTypeDef hexti2 = {.Line = EXTI_LINE_5};
 
+/// Current filling level of \ref tx_buffer
 static uint32_t tx_cnt = 0;
+
+/// Current filling level of \ref rx_buffer
 static uint32_t rx_cnt = 0;
+
+/** Buffer storing timestamps of falling/rising edges of signal  
+ * on the RS-232 TX line */
 static uint32_t tx_buffer[BUFFER_SIZE] = {0};
+
+/** Buffer storing timestamps of falling/rising edges of signal  
+ * on the RS-232 RX line */
 static uint32_t rx_buffer[BUFFER_SIZE] = {0};
 
+/** List of baudrates which can be detected by the algorithm */
+static const uint32_t baudrates_list[] = {921600, 460800, 230400, 115200, 57600, 38400, 19200, 9600, 4800, 2400};
+
+/** Context of check of hypothesis */
 struct hyp_check_ctx {
-    uint32_t error_parity_cnt;
-    uint32_t error_frame_cnt;
-    uint32_t valid_cnt;
-    bool overflow;
+    uint32_t error_parity_cnt;      ///< Count of UART parity errors, \see BSP_UART_ERROR_PE
+    uint32_t error_frame_cnt;       ///< Count of UART frame errors, \see BSP_UART_ERROR_FE
+    uint32_t valid_cnt;             ///< Count of successfully received bytes over UART
+    bool overflow;                  ///< Flag whether overflow of receive buffer occured
 };
 
+/** Context of baudrate calculation */
 struct baud_calc_ctx {
-    uint32_t    *cnt;
-    uint32_t    *buffer;
-    uint32_t    idx;
-    uint32_t    min_len_bit;
-    uint32_t    max_len_bit;
-    uint32_t    baudrate;
-    bool        toggle_bit;
-    bool        lin_detected;
-    bool        done;
+    uint32_t    *cnt;               ///< Pointer to \ref tx_cnt or \ref rx_cnt
+    uint32_t    *buffer;            ///< Pointer to \ref tx_buffer or \ref rx_buffer
+    uint32_t    idx;                ///< Current position of \ref buffer for analysis
+    uint32_t    min_len_bit;        ///< Minimum detected width of lower level on RS-232 line, valid over \ref baudrates_list
+    uint32_t    max_len_bit;        ///< Maximum detected width of lower level on RS-232 line
+    uint32_t    baudrate;           ///< Calculated baudrate in bods
+    bool        toggle_bit;         ///< Flag showing current level on RS-232 line: true - upper one, false - lower one
+    bool        lin_detected;       ///< Flag whether LIN break is detected
+    bool        done;               ///< Flag whether baudrate calculation is finished
 };
 
+/** Context of hypothesis */
 struct hyp_ctx {
+    /** Size of UART frame in bits */
     enum uart_wordlen wordlen;
+    /** Parity type */
     enum uart_parity parity;
+    /** Next number of hypothesis from \ref hyp_seq if count of  
+     * UART frame errors reach sniffer_rs232_config::uart_error_count */
     uint8_t jump;
 };
 
+/// Sequence of hypotheses regarding UART parameters of RS-232 channels
 static const struct hyp_ctx hyp_seq[] = {
     {BSP_UART_WORDLEN_8, BSP_UART_PARITY_EVEN, 3},
     {BSP_UART_WORDLEN_8, BSP_UART_PARITY_ODD, 3},
@@ -51,8 +105,13 @@ static const struct hyp_ctx hyp_seq[] = {
     {BSP_UART_WORDLEN_9, BSP_UART_PARITY_NONE, 0}
 };
 
+/// Local copy of algorithm settings
 static struct sniffer_rs232_config config;
 
+/** STM32 HAL TIM MSP initialization
+ * 
+ * \param[in] htim STM32 HAL TIM instance, should equal to \ref alg_tim
+ */
 static void __sniffer_rs232_tim_msp_init(TIM_HandleTypeDef* htim)
 {
     if (htim->Instance != TIM6)
@@ -61,6 +120,10 @@ static void __sniffer_rs232_tim_msp_init(TIM_HandleTypeDef* htim)
     __HAL_RCC_TIM6_CLK_ENABLE();
 }
 
+/** STM32 HAL TIM MSP deinitialization
+ * 
+ * \param[in] htim STM32 HAL TIM instance, should equal to \ref alg_tim
+ */
 static void __sniffer_rs232_tim_msp_deinit(TIM_HandleTypeDef* htim)
 {
     if (htim->Instance != TIM6)
@@ -69,9 +132,16 @@ static void __sniffer_rs232_tim_msp_deinit(TIM_HandleTypeDef* htim)
     __HAL_RCC_TIM6_CLK_DISABLE();
 }
 
+/** Baudrate calculation by width of a bit
+ * 
+ * The function calculates whether width of a bit corresponds one of the  
+ * baudrate from \ref baudrates_list
+ * 
+ * \param[in] len_bit width of a bit
+ * \return baudrate value in bods on success, 0 otherwise
+ */
 static uint32_t __sniffer_rs232_baudrate_get(uint32_t len_bit)
 {
-    const uint32_t baudrates_list[] = {921600, 460800, 230400, 115200, 57600, 38400, 19200, 9600, 4800, 2400};
     const float tolerance = (float)config.baudrate_tolerance / 100.0f;
 
     if (!len_bit)
@@ -93,11 +163,21 @@ static uint32_t __sniffer_rs232_baudrate_get(uint32_t len_bit)
     return 0;
 }
 
-static uint8_t __sniffer_rs232_line_baudrate_calc_init(GPIO_TypeDef* gpiox, uint16_t port, IRQn_Type irq_type)
+/** Initialization of baudrate part of the algorithm
+ * 
+ * The function makes MSP EXTI initialization and waits for IDLE  
+ * state on the appropriate RS-232 line
+ * 
+ * \param[in] gpiox GPIO port of \a pin used as EXTI
+ * \param[in] pin GPIO pin used as EXTI
+ * \param[in] irq_type NVIC IRQ type
+ * \return \ref RES_OK on success error otherwise
+ */
+static uint8_t __sniffer_rs232_line_baudrate_calc_init(GPIO_TypeDef* gpiox, uint16_t pin, IRQn_Type irq_type)
 {
     GPIO_InitTypeDef GPIO_InitStruct = {0};
 
-    GPIO_InitStruct.Pin = port;
+    GPIO_InitStruct.Pin = pin;
     GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
     GPIO_InitStruct.Pull = GPIO_PULLUP;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
@@ -113,7 +193,7 @@ static uint8_t __sniffer_rs232_line_baudrate_calc_init(GPIO_TypeDef* gpiox, uint
             break;
         }
 
-        if (BSP_GPIO_PORT_READ(gpiox, port)) {
+        if (BSP_GPIO_PORT_READ(gpiox, pin)) {
             HAL_NVIC_ClearPendingIRQ(irq_type);
             HAL_NVIC_EnableIRQ(irq_type);
             break;
@@ -123,6 +203,12 @@ static uint8_t __sniffer_rs232_line_baudrate_calc_init(GPIO_TypeDef* gpiox, uint
     return res;
 }
 
+/** Baudrate calculation on the RS-232 line
+ * 
+ * The function calculates baudrate on one RS-232 line 
+ * 
+ * \param[in,out] ctx context of baudrate calculation
+ */
 static void __sniffer_rs232_line_baudrate_calc(struct baud_calc_ctx *ctx)
 {
     if (!ctx)
@@ -165,6 +251,15 @@ static void __sniffer_rs232_line_baudrate_calc(struct baud_calc_ctx *ctx)
     ctx->done = (ctx->idx >= (4 * config.min_detect_bits));
 }
 
+/** Baudrate part of the algorithm
+ * 
+ * The function calculates baudrate on RS-232 TX/RX lines according to \a channel_type
+ * 
+ * \param[in] channel_type RS-232 channel detection type
+ * \param[out] baudrate calculated baudrate
+ * \param[out] lin_detected flag whether LIN protocol is detected
+ * \return \ref RES_OK on success error otherwise
+ */
 static uint8_t __sniffer_rs232_baudrate_calc(enum rs232_channel_type channel_type, uint32_t *baudrate, bool *lin_detected)
 {
     if (!baudrate || !lin_detected || !RS232_CHANNEL_TYPE_VALID(channel_type))
@@ -172,6 +267,7 @@ static uint8_t __sniffer_rs232_baudrate_calc(enum rs232_channel_type channel_typ
 
     const uint32_t uart_max_exec_tmt = 1000 * config.exec_timeout;
 
+    /* Initialization */
     memset(tx_buffer, 0, sizeof(tx_buffer));
     memset(rx_buffer, 0, sizeof(rx_buffer));
     tx_cnt = rx_cnt = 0;
@@ -202,6 +298,7 @@ static uint8_t __sniffer_rs232_baudrate_calc(enum rs232_channel_type channel_typ
     uint32_t calc_baudrate = 0;
     uint32_t start_exec_time = HAL_GetTick();
 
+    /* Baudrate calculation */
     while (true) {
         if ((HAL_GetTick() - start_exec_time) > uart_max_exec_tmt) {
             res = RES_TIMEOUT;
@@ -266,12 +363,29 @@ static uint8_t __sniffer_rs232_baudrate_calc(enum rs232_channel_type channel_typ
     return res;
 }
 
+/** Callback for UART overflow
+ * 
+ * Callback is called from \ref bsp_uart when overflow of RX buffer is occured  
+ * If call occured the algorithm is terminated with fail
+ * 
+ * \param[in] type UART type
+ * \param[in] params optional parameters, containing check context of the current hypothesis \ref hyp_check_ctx
+ */
 static void __sniffer_rs232_uart_overflow_cb(enum uart_type type, void *params)
 {
     struct hyp_check_ctx *check_ctx = (struct hyp_check_ctx*)params;
     check_ctx->overflow = true;
 }
 
+/** Callback for UART errors
+ * 
+ * Callback is called from \ref bsp_uart when UART errors are occured  
+ * Callback counts UART errors into check context of the current hypothesis \ref hyp_check_ctx
+ * 
+ * \param[in] type UART type
+ * \param[in] error mask of occured UART errors
+ * \param[in] params optional parameters, containing check context of the current hypothesis \ref hyp_check_ctx
+ */
 static void __sniffer_rs232_uart_error_cb(enum uart_type type, uint32_t error, void *params)
 {
     struct hyp_check_ctx *check_ctx = (struct hyp_check_ctx*)params;
@@ -285,6 +399,15 @@ static void __sniffer_rs232_uart_error_cb(enum uart_type type, uint32_t error, v
     bsp_uart_start(type);
 }
 
+/** Parameter part of the algorithm
+ * 
+ * The function calculates other parameters of UART on RS-232 lines
+ * 
+ * \param[in] channel_type RS-232 channel detection type
+ * \param[in] baudrate baudrate in bods on RS-232 lines
+ * \param[out] hyp_num number of approved hypothesis from \ref hyp_seq on success, -1 otherwise
+ * \return \ref RES_OK on success error otherwise
+ */
 static uint8_t __sniffer_rs232_params_calc(enum rs232_channel_type channel_type, uint32_t baudrate, int8_t *hyp_num)
 {
     if (!baudrate || !RS232_CHANNEL_TYPE_VALID(channel_type) || !hyp_num)
@@ -298,6 +421,7 @@ static uint8_t __sniffer_rs232_params_calc(enum rs232_channel_type channel_type,
     struct hyp_check_ctx rx_check_ctx = {0};
 
     do {
+        /* Initialization */
         struct uart_init_ctx init_ctx = {0};
         init_ctx.baudrate = baudrate;
         init_ctx.wordlen = hyp_seq[__hyp_num].wordlen;
@@ -331,6 +455,7 @@ static uint8_t __sniffer_rs232_params_calc(enum rs232_channel_type channel_type,
         const uint32_t uart_max_exec_tmt = 1000 * config.exec_timeout;
         uint32_t start_exec_time = HAL_GetTick();
 
+        /* Calculation */
         while (true) {
             if ((HAL_GetTick() - start_exec_time) > uart_max_exec_tmt) {
                 res = RES_TIMEOUT;
@@ -360,6 +485,7 @@ static uint8_t __sniffer_rs232_params_calc(enum rs232_channel_type channel_type,
                 break;
             }
 
+            /* Result processing */
             switch (channel_type) {
             case RS232_CHANNEL_TX:
                 finish_flag = (tx_check_ctx.valid_cnt >= config.valid_packets_count);
@@ -408,6 +534,7 @@ static uint8_t __sniffer_rs232_params_calc(enum rs232_channel_type channel_type,
         }
     } while(__hyp_num);
 
+    /* Deinitialization */
     if (channel_type != RS232_CHANNEL_RX) {
         res = bsp_uart_deinit(BSP_UART_TYPE_RS232_TX);
 
@@ -425,6 +552,7 @@ static uint8_t __sniffer_rs232_params_calc(enum rs232_channel_type channel_type,
     return res;
 }
 
+/* Valid value range of items from algorithm settings, see header file for details */
 uint32_t sniffer_rs232_config_item_range(uint32_t shift, bool is_min)
 {
     struct sniffer_rs232_config *__config = 0;
@@ -444,6 +572,7 @@ uint32_t sniffer_rs232_config_item_range(uint32_t shift, bool is_min)
     return 0;
 }
 
+/* Check algorithm settings, see header file for details */
 bool sniffer_rs232_config_check(struct sniffer_rs232_config *__config)
 {
     if (!__config)
@@ -452,27 +581,28 @@ bool sniffer_rs232_config_check(struct sniffer_rs232_config *__config)
     if (!RS232_CHANNEL_TYPE_VALID(__config->channel_type))
         return false;
 
-    if (!SNIFFER_RS232_CFG_PARA_IS_VALID(valid_packets_count, __config->valid_packets_count))
+    if (!SNIFFER_RS232_CFG_PARAM_IS_VALID(valid_packets_count, __config->valid_packets_count))
         return false;
 
-    if (!SNIFFER_RS232_CFG_PARA_IS_VALID(uart_error_count, __config->uart_error_count))
+    if (!SNIFFER_RS232_CFG_PARAM_IS_VALID(uart_error_count, __config->uart_error_count))
         return false;
 
-    if (!SNIFFER_RS232_CFG_PARA_IS_VALID(baudrate_tolerance, __config->baudrate_tolerance))
+    if (!SNIFFER_RS232_CFG_PARAM_IS_VALID(baudrate_tolerance, __config->baudrate_tolerance))
         return false;
 
-    if (!SNIFFER_RS232_CFG_PARA_IS_VALID(min_detect_bits, __config->min_detect_bits))
+    if (!SNIFFER_RS232_CFG_PARAM_IS_VALID(min_detect_bits, __config->min_detect_bits))
         return false;
 
-    if (!SNIFFER_RS232_CFG_PARA_IS_VALID(exec_timeout, __config->exec_timeout))
+    if (!SNIFFER_RS232_CFG_PARAM_IS_VALID(exec_timeout, __config->exec_timeout))
         return false;
 
-    if (!SNIFFER_RS232_CFG_PARA_IS_VALID(calc_attempts, __config->calc_attempts))
+    if (!SNIFFER_RS232_CFG_PARAM_IS_VALID(calc_attempts, __config->calc_attempts))
         return false;
 
     return true;
 }
 
+/* Algorithm initialization, see header file for details */
 uint8_t sniffer_rs232_init(struct sniffer_rs232_config *__config)
 {
     if (!sniffer_rs232_config_check(__config))
@@ -512,30 +642,31 @@ uint8_t sniffer_rs232_init(struct sniffer_rs232_config *__config)
     HAL_NVIC_SetPriority(EXTI9_5_IRQn, 4, 0);
 
     /* Timer init & start */
-    HAL_TIM_RegisterCallback(&htim6, HAL_TIM_BASE_MSPINIT_CB_ID, __sniffer_rs232_tim_msp_init);
-    HAL_TIM_RegisterCallback(&htim6, HAL_TIM_BASE_MSPDEINIT_CB_ID, __sniffer_rs232_tim_msp_deinit);
+    HAL_TIM_RegisterCallback(&alg_tim, HAL_TIM_BASE_MSPINIT_CB_ID, __sniffer_rs232_tim_msp_init);
+    HAL_TIM_RegisterCallback(&alg_tim, HAL_TIM_BASE_MSPDEINIT_CB_ID, __sniffer_rs232_tim_msp_deinit);
 
-    htim6.Init.Prescaler = bsp_rcc_apb_timer_freq_get(htim6.Instance) / (1000000 * config.baudrate_tolerance) - 1;
-    htim6.Init.Period = UINT16_MAX;
-    htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
-    htim6.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-    htim6.Init.RepetitionCounter = 0;
-    htim6.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-    if (HAL_TIM_Base_Init(&htim6) != HAL_OK)
+    alg_tim.Init.Prescaler = bsp_rcc_apb_timer_freq_get(alg_tim.Instance) / (1000000 * config.baudrate_tolerance) - 1;
+    alg_tim.Init.Period = UINT16_MAX;
+    alg_tim.Init.CounterMode = TIM_COUNTERMODE_UP;
+    alg_tim.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    alg_tim.Init.RepetitionCounter = 0;
+    alg_tim.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+    if (HAL_TIM_Base_Init(&alg_tim) != HAL_OK)
         return RES_NOK;
 
-    if (HAL_TIM_Base_Start(&htim6) != HAL_OK)
+    if (HAL_TIM_Base_Start(&alg_tim) != HAL_OK)
         return RES_NOK;
 
     return RES_OK;
 }
 
+/* Algorithm deinitialization, see header file for details */
 uint8_t sniffer_rs232_deinit(void)
 {
-    if (HAL_TIM_Base_Stop(&htim6) != HAL_OK)
+    if (HAL_TIM_Base_Stop(&alg_tim) != HAL_OK)
         return RES_NOK;
 
-    if (HAL_TIM_Base_DeInit(&htim6) != HAL_OK)
+    if (HAL_TIM_Base_DeInit(&alg_tim) != HAL_OK)
         return RES_NOK;
 
     HAL_NVIC_DisableIRQ(EXTI3_IRQn);
@@ -551,6 +682,7 @@ uint8_t sniffer_rs232_deinit(void)
     return RES_OK;
 }
 
+/* Algorithm calculation, see header file for details */
 uint8_t sniffer_rs232_calc(struct uart_init_ctx *uart_params)
 {
     if (!uart_params)
@@ -599,9 +731,13 @@ uint8_t sniffer_rs232_calc(struct uart_init_ctx *uart_params)
     return res;
 }
 
+/** NVIC IRQ EXTI3 handler
+ * 
+ * Handler is used to fill in \ref tx_buffer
+*/
 void EXTI3_IRQHandler(void)
 {
-    tx_buffer[tx_cnt++] = htim6.Instance->CNT;
+    tx_buffer[tx_cnt++] = alg_tim.Instance->CNT;
 
     if (tx_cnt == BUFFER_SIZE)
         HAL_NVIC_DisableIRQ(EXTI3_IRQn);
@@ -609,12 +745,18 @@ void EXTI3_IRQHandler(void)
     __HAL_GPIO_EXTI_CLEAR_IT(GPIO_PIN_3);
 }
 
+/** NVIC IRQ EXTI5 handler
+ * 
+ * Handler is used to fill in \ref rx_buffer
+*/
 void EXTI9_5_IRQHandler(void)
 {
-    rx_buffer[rx_cnt++] = htim6.Instance->CNT;
+    rx_buffer[rx_cnt++] = alg_tim.Instance->CNT;
 
     if (rx_cnt == BUFFER_SIZE)
         HAL_NVIC_DisableIRQ(EXTI9_5_IRQn);
 
     __HAL_GPIO_EXTI_CLEAR_IT(GPIO_PIN_5);
 }
+
+/** @} */
