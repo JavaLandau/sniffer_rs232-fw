@@ -64,7 +64,7 @@ void cli_trace(const char *format, ...);
  */
 uint8_t cli_rs232_trace(enum uart_type uart_type,
                         enum rs232_trace_type trace_type,
-                        uint8_t *data,
+                        uint16_t *data,
                         uint32_t len,
                         bool break_line);
 

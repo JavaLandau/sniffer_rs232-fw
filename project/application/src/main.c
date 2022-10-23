@@ -36,7 +36,7 @@ algorithm usage, error handlers and etc.
 */
 
 /// Firmware version
-#define APP_VERSION             "1.0-RC3"
+#define APP_VERSION             "1.0-RC4"
 
 /// Size of RX buffer to store data received from \ref bsp_uart
 #define UART_RX_BUFF            (256)
@@ -351,7 +351,7 @@ int main()
     app_led_set(LED_EVENT_SUCCESS);
     cli_trace("Start to monitoring...\r\n");
 
-    if (!config.presettings.lin_enabled) {
+    if (!uart_params.lin_enabled) {
         bsp_lcd1602_cprintf("%c: %u,%1u%c%1u", NULL, presettings_enabled ? 'P' : 'S', uart_params.baudrate,
                                                      uart_params.wordlen, uart_parity_sym[uart_params.parity], 
                                                      uart_params.stopbits);
@@ -381,7 +381,7 @@ int main()
     bool error_displayed = false;
     enum uart_type uart_type = BSP_UART_TYPE_RS232_TX;
     enum uart_type prev_uart_type = uart_type;
-    uint8_t rx_buff[UART_RX_BUFF] = {0};
+    uint16_t rx_buff[UART_RX_BUFF] = {0};
     uint16_t rx_len = 0;
     bool started = true;
 

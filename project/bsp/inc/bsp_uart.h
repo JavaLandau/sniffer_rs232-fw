@@ -136,7 +136,7 @@ uint8_t bsp_uart_deinit(enum uart_type type);
  * \param[in] tmt_ms timeout for receiving in ms
  * \return \ref RES_OK on success error otherwise
  */
-uint8_t bsp_uart_read(enum uart_type type, uint8_t *data, uint16_t *len, uint32_t tmt_ms);
+uint8_t bsp_uart_read(enum uart_type type, void *data, uint16_t *len, uint32_t tmt_ms);
 
 /** Send BSP UART data
  * 
@@ -150,7 +150,7 @@ uint8_t bsp_uart_read(enum uart_type type, uint8_t *data, uint16_t *len, uint32_
  * \param[in] tmt_ms timeout for sending in ms
  * \return \ref RES_OK on success error otherwise
  */
-uint8_t bsp_uart_write(enum uart_type type, uint8_t *data, uint16_t len, uint32_t tmt_ms);
+uint8_t bsp_uart_write(enum uart_type type, void *data, uint16_t len, uint32_t tmt_ms);
 
 /** BSP UART instance start
  * 

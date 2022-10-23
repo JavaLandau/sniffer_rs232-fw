@@ -1,3 +1,12 @@
+V.1.0-RC4 - 2022-10-23
+Doc:
++ Added documentation v.1.1 for the project
+Bug fixe(s):
++ Fixed BSP UART driver to read 9-bit data or data with parity bit from RS-232 channels
++ Added workaround into BSP UART IRQ handler if UART error occurred before DMA receiver is enabled
++ Fixed display of LIN support in case of not presettings
++ Added entry to upper menu "Algorithm" from menu item "Defaults->YES"
+
 V.1.0-RC3 - 2022-10-13
 New feature(s):
 + #11: LIN Support

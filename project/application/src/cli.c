@@ -386,6 +386,8 @@ static uint8_t __cli_menu_set_defaults(char *input, void *param)
         __cli_menu_cfg_values_set(flash_config);
     }
 
+    __cli_menu_entry(NULL, NULL);
+
     return RES_OK;
 }
 
@@ -750,7 +752,7 @@ uint8_t cli_menu_start(struct flash_config *config)
 /* Trace of monitored RS-232 data, see header file for details */
 uint8_t cli_rs232_trace(enum uart_type uart_type,
                         enum rs232_trace_type trace_type,
-                        uint8_t *data,
+                        uint16_t *data,
                         uint32_t len,
                         bool break_line)
 {
@@ -794,10 +796,14 @@ uint8_t cli_rs232_trace(enum uart_type uart_type,
         }
 
         if (i < len) {
-            if (is_hex)
-                total_len += snprintf((char*)&tx_buff[total_len], UART_TX_BUFF_SIZE - total_len, "\\%02X", data[i]);
-            else
+            if (is_hex) {
+                if (data[i] > 0xFF)
+                    total_len += snprintf((char*)&tx_buff[total_len], UART_TX_BUFF_SIZE - total_len, "\\%03X", data[i]);
+                else
+                    total_len += snprintf((char*)&tx_buff[total_len], UART_TX_BUFF_SIZE - total_len, "\\%02X", data[i]);
+            } else {
                 total_len += snprintf((char*)&tx_buff[total_len], UART_TX_BUFF_SIZE - total_len, "%c", data[i]);
+            }
         }
 
        if (total_len >= UART_TX_BUFF_SIZE) {

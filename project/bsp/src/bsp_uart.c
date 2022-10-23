@@ -57,8 +57,8 @@ The file includes implementation of BSP layer of the UART
 /// Context of the BSP UART instance
 struct uart_ctx {
     struct uart_init_ctx init;  ///< Initializing context of the instance
-    uint8_t *tx_buff;           ///< Sent buffer used by DMA TX
-    uint8_t *rx_buff;           ///< Received buffer used by DMA RX
+    void *tx_buff;              ///< Sent buffer used by DMA TX
+    void *rx_buff;              ///< Received buffer used by DMA RX
     uint16_t rx_idx_get;        ///< Read poisition in \ref rx_buff used as ring buffer
     uint16_t rx_idx_set;        ///< Write poisition in \ref rx_buff used as ring buffer
     bool frame_error;           ///< Flag whetner UART frame error is occured, used to separate LIN break from other frame errors
@@ -311,8 +311,8 @@ static uint8_t __uart_dma_init(enum uart_type type)
         hdma_rx->Init.Direction             = DMA_PERIPH_TO_MEMORY;
         hdma_rx->Init.PeriphInc             = DMA_PINC_DISABLE;
         hdma_rx->Init.MemInc                = DMA_MINC_ENABLE;
-        hdma_rx->Init.PeriphDataAlignment   = DMA_PDATAALIGN_BYTE;
-        hdma_rx->Init.MemDataAlignment      = DMA_MDATAALIGN_BYTE;
+        hdma_rx->Init.PeriphDataAlignment   = DMA_PDATAALIGN_HALFWORD;
+        hdma_rx->Init.MemDataAlignment      = DMA_PDATAALIGN_HALFWORD;
         hdma_rx->Init.Mode                  = DMA_CIRCULAR;
         hdma_rx->Init.Priority              = DMA_PRIORITY_LOW;
         hdma_rx->Init.FIFOMode              = DMA_FIFOMODE_DISABLE;
@@ -507,6 +507,31 @@ static void __uart_error_callback(enum uart_type type, uint32_t error)
     }
 }
 
+/** UART data mask
+ * 
+ * The function executes masking of UART data according to UART settings
+ * 
+ * \param[in] type BSP UART type
+ * \param[in,out] data masked data
+ * \param[in] len size of \p data
+ */
+static void __uart_data_mask(enum uart_type type, uint16_t *data, uint16_t len)
+{
+    if (!UART_TYPE_VALID(type) || !uart_obj[type].ctx || !len)
+        return;
+
+    uint16_t data_mask = 0;
+    struct uart_init_ctx *params = &uart_obj[type].ctx->init;
+
+    if (params->wordlen == BSP_UART_WORDLEN_9)
+        data_mask = (params->parity == BSP_UART_PARITY_NONE) ? 0x1FF : 0xFF;
+    else
+        data_mask = (params->parity == BSP_UART_PARITY_NONE) ? 0xFF : 0x7F;
+
+    for (uint16_t i = 0; i < len; i++)
+        data[i] &= data_mask;
+}
+
 /* BSP UART instance start, see header file for details */
 uint8_t bsp_uart_start(enum uart_type type)
 {
@@ -552,7 +577,7 @@ bool bsp_uart_is_started(enum uart_type type)
 }
 
 /* Send BSP UART data, see header file for details */
-uint8_t bsp_uart_write(enum uart_type type, uint8_t *data, uint16_t len, uint32_t tmt_ms)
+uint8_t bsp_uart_write(enum uart_type type, void *data, uint16_t len, uint32_t tmt_ms)
 {
     if (!UART_TYPE_VALID(type) || !uart_obj[type].ctx || !uart_obj[type].ctx->tx_buff)
         return RES_INVALID_PAR;
@@ -597,7 +622,7 @@ bool bsp_uart_rx_buffer_is_empty(enum uart_type type)
 }
 
 /* Receive BSP UART data, see header file for details */
-uint8_t bsp_uart_read(enum uart_type type, uint8_t *data, uint16_t *len, uint32_t tmt_ms)
+uint8_t bsp_uart_read(enum uart_type type, void *data, uint16_t *len, uint32_t tmt_ms)
 {
     if (!UART_TYPE_VALID(type) || !uart_obj[type].ctx || !uart_obj[type].ctx->rx_buff)
         return RES_INVALID_PAR;
@@ -605,6 +630,13 @@ uint8_t bsp_uart_read(enum uart_type type, uint8_t *data, uint16_t *len, uint32_
     uint8_t res = RES_OK;
     uint32_t start_time = HAL_GetTick();
     uint16_t idx_get = uart_obj[type].ctx->rx_idx_get;
+
+    uint8_t data_size = 0;
+
+    if (type == BSP_UART_TYPE_CLI)
+        data_size = sizeof(uint8_t);
+    else
+        data_size = sizeof(uint16_t);
 
     while(true) {
         uint16_t idx_set = uart_obj[type].ctx->rx_idx_set;
@@ -614,18 +646,21 @@ uint8_t bsp_uart_read(enum uart_type type, uint8_t *data, uint16_t *len, uint32_
 
             if (idx_set > idx_get) {
                 if (data)
-                    memcpy(data, &uart_obj[type].ctx->rx_buff[idx_get], idx_set - idx_get);
+                    memcpy(data, (uint8_t*)uart_obj[type].ctx->rx_buff + idx_get * data_size, (idx_set - idx_get) * data_size);
                 __len = idx_set - idx_get;
             } else {
                 if (data) {
-                    memcpy(data, &uart_obj[type].ctx->rx_buff[idx_get], rx_size - idx_get);
-                    memcpy(&data[rx_size - idx_get], uart_obj[type].ctx->rx_buff, idx_set);
+                    memcpy(data, (uint8_t*)uart_obj[type].ctx->rx_buff + idx_get * data_size, (rx_size - idx_get) * data_size);
+                    memcpy((uint8_t*)data + data_size * (rx_size - idx_get), uart_obj[type].ctx->rx_buff, idx_set * data_size);
                 }
                 __len = rx_size - idx_get + idx_set;
             }
 
             if (len)
                 *len = __len;
+
+            if (data && type != BSP_UART_TYPE_CLI)
+                __uart_data_mask(type, (uint16_t*)data, __len);
 
             uart_obj[type].ctx->rx_idx_get = idx_set;
 
@@ -658,6 +693,13 @@ uint8_t bsp_uart_init(enum uart_type type, struct uart_init_ctx *init)
 
     if (type == BSP_UART_TYPE_CLI && init->lin_enabled)
         return RES_NOT_SUPPORTED;
+
+    uint8_t rx_data_size = 0;
+
+    if (type == BSP_UART_TYPE_CLI)
+        rx_data_size = sizeof(uint8_t);
+    else
+        rx_data_size = sizeof(uint16_t);
 
     uint8_t res = RES_OK;
     HAL_StatusTypeDef hal_res = HAL_OK;
@@ -692,23 +734,23 @@ uint8_t bsp_uart_init(enum uart_type type, struct uart_init_ctx *init)
         }
 
         if (!uart_obj[type].ctx->rx_buff && rx_size) {
-            uart_obj[type].ctx->rx_buff = (uint8_t*)malloc(rx_size);
+            uart_obj[type].ctx->rx_buff = malloc(rx_size * rx_data_size);
 
             if (!uart_obj[type].ctx->rx_buff) {
                 res = RES_MEMORY_ERR;
                 break;
             }
-            memset(uart_obj[type].ctx->rx_buff, 0, rx_size);
+            memset(uart_obj[type].ctx->rx_buff, 0, rx_size * rx_data_size);
         }
 
         if (!uart_obj[type].ctx->tx_buff && tx_size) {
-            uart_obj[type].ctx->tx_buff = (uint8_t*)malloc(tx_size);
+            uart_obj[type].ctx->tx_buff = malloc(tx_size * sizeof(uint8_t));
 
             if (!uart_obj[type].ctx->tx_buff) {
                 res = RES_MEMORY_ERR;
                 break;
             }
-            memset(uart_obj[type].ctx->tx_buff, 0, tx_size);
+            memset(uart_obj[type].ctx->tx_buff, 0, tx_size * sizeof(uint8_t));
         }
 
         uart_obj[type].ctx->init = *init;
@@ -808,6 +850,18 @@ static void __uart_irq_handler(enum uart_type type)
 
     uint32_t error = 0;
     USART_TypeDef *instance = uart_obj[type].uart.Instance;
+
+    /* Workaround if UART error occurred before DMA receiver is enabled (see UART_Start_Receive_DMA) */
+    if (!HAL_IS_BIT_SET(instance->CR3, USART_CR3_DMAR)) {
+        // ORE flag is proccesed separately in HAL_UART_IRQHandler
+        if (!(instance->SR & USART_SR_ORE)) {
+            if (instance->SR & (USART_SR_PE | USART_SR_FE | USART_SR_NE)) {
+                // Clear mentioned errors
+                __HAL_UART_CLEAR_PEFLAG(&uart_obj[type].uart);
+                return;
+            }
+        }
+    }
 
     /* Process LIN break detection if enabled */
     if (LL_USART_IsEnabledLIN(instance) && LL_USART_IsEnabledIT_LBD(instance)) {

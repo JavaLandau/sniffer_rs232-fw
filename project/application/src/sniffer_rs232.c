@@ -19,7 +19,8 @@ The file includes recognizing algorithm of RS-232 parameters
  * 
  * Algorithm consists of two parts:  
  * 1. Baudrate part - when baudrate calculated in EXTI mode
- * 2. Parameter part - when other UART parameters (word length, parity type) calculated in UART mode
+ * 2. Parameter part - when other UART parameters (word length, parity type) calculated in UART mode  
+ * \todo Check the algorithm for 921600 baudrate
  * \ingroup application
  * @{
 */

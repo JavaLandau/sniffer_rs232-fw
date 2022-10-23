@@ -15,6 +15,9 @@
 *.bat
 *.ps1
 *.dep
+docs/html/**
+docs/latex/**
+docs/docbook/**
 **/settings/**
 **/Debug/**
 Backup of*.ewp
