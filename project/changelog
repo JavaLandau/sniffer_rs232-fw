@@ -1,3 +1,8 @@
+V.1.0 - 2022-10-23
+- Release accepted
+Doc:
++ Updated documentation with version 1.2
+
 V.1.0-RC5 - 2022-10-23
 Common:
 + Minimal length of recognized LIN break is increased to 12 bits in algorithm of Sniffer RS-232 (more stability in detection)
