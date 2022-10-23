@@ -1,3 +1,9 @@
+V.1.0-RC5 - 2022-10-23
+Common:
++ Minimal length of recognized LIN break is increased to 12 bits in algorithm of Sniffer RS-232 (more stability in detection)
+Bug fixe(s):
++ Timer TIM6 is replaced with TIM5 with 32-bit counter (it lets recognize LIN break with low UART speed)
+
 V.1.0-RC4 - 2022-10-23
 Doc:
 + Added documentation v.1.1 for the project

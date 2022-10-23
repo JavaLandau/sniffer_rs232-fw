@@ -33,11 +33,11 @@ The file includes recognizing algorithm of RS-232 parameters
 
 /** Minimal ratio between maximum and minimum widths of lower level  
  * on the RS-232 lines to make decision about LIN break existence */
-#define LIN_BREAK_MIN_LEN       (10)
+#define LIN_BREAK_MIN_LEN       (11)
 
 /** STM32 HAL TIM instance for timer used to count widths of lower level  
  *  on the RS-232 lines */
-static TIM_HandleTypeDef alg_tim = {.Instance = TIM6};
+static TIM_HandleTypeDef alg_tim = {.Instance = TIM5};
 
 /** STM32 HAL EXTI instance used to detect falling & rising edges  
  * of signals on the RS-232 TX line */
@@ -115,10 +115,10 @@ static struct sniffer_rs232_config config;
  */
 static void __sniffer_rs232_tim_msp_init(TIM_HandleTypeDef* htim)
 {
-    if (htim->Instance != TIM6)
+    if (htim->Instance != TIM5)
         return;
 
-    __HAL_RCC_TIM6_CLK_ENABLE();
+    __HAL_RCC_TIM5_CLK_ENABLE();
 }
 
 /** STM32 HAL TIM MSP deinitialization
@@ -127,10 +127,10 @@ static void __sniffer_rs232_tim_msp_init(TIM_HandleTypeDef* htim)
  */
 static void __sniffer_rs232_tim_msp_deinit(TIM_HandleTypeDef* htim)
 {
-    if (htim->Instance != TIM6)
+    if (htim->Instance != TIM5)
         return;
 
-    __HAL_RCC_TIM6_CLK_DISABLE();
+    __HAL_RCC_TIM5_CLK_DISABLE();
 }
 
 /** Baudrate calculation by width of a bit
@@ -231,7 +231,7 @@ static void __sniffer_rs232_line_baudrate_calc(struct baud_calc_ctx *ctx)
             break;
 
         if (!ctx->toggle_bit) {
-            uint32_t len_bit = (uint16_t)(ctx->buffer[ctx->idx + 1] - ctx->buffer[ctx->idx]);
+            uint32_t len_bit = (uint32_t)(ctx->buffer[ctx->idx + 1] - ctx->buffer[ctx->idx]);
             if (len_bit < ctx->min_len_bit) {
                 uint32_t baudrate = __sniffer_rs232_baudrate_get(len_bit);
                 if (baudrate) {
@@ -647,7 +647,7 @@ uint8_t sniffer_rs232_init(struct sniffer_rs232_config *__config)
     HAL_TIM_RegisterCallback(&alg_tim, HAL_TIM_BASE_MSPDEINIT_CB_ID, __sniffer_rs232_tim_msp_deinit);
 
     alg_tim.Init.Prescaler = bsp_rcc_apb_timer_freq_get(alg_tim.Instance) / (1000000 * config.baudrate_tolerance) - 1;
-    alg_tim.Init.Period = UINT16_MAX;
+    alg_tim.Init.Period = UINT32_MAX;
     alg_tim.Init.CounterMode = TIM_COUNTERMODE_UP;
     alg_tim.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
     alg_tim.Init.RepetitionCounter = 0;

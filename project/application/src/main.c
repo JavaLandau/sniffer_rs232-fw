@@ -36,7 +36,7 @@ algorithm usage, error handlers and etc.
 */
 
 /// Firmware version
-#define APP_VERSION             "1.0-RC4"
+#define APP_VERSION             "1.0-RC5"
 
 /// Size of RX buffer to store data received from \ref bsp_uart
 #define UART_RX_BUFF            (256)
